@@ -1,8 +1,8 @@
-# Next-Gen Global GK & Current Affairs Platform
+# Next-Gen Global GK & Current Affairs Platform "GlobIQ"
 ## Master Product, Domain, Architecture, SEO & Execution Specification
 
-**Version 2.0 — Final, Consolidated, AI-Agent-Ready**
-**Format:** Markdown (designed to live in a GitHub repository and be read directly by AI coding agents)
+**Version 2.0 — Final, Consolidated Plan**
+**Platform Name:** GlobIQ
 
 **Purpose:** A unified global platform that replaces fragmented GK books, magazines, generic current-affairs feeds and exam-specific repetition with one structured, multilingual, personalised knowledge system — for both general knowledge-seekers and exam aspirants, accessible first as a website and later as native apps built on the same APIs.
 
