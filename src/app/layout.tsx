@@ -14,24 +14,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+  title: {
+    default: "GlobIQ — Next-Gen Global GK & Current Affairs Platform",
+    template: "%s | GlobIQ",
   },
+  description:
+    "One unified, multilingual, personalised knowledge system for general learners and exam aspirants — replacing GK books, magazines and GK-only coaching.",
+  keywords: ["GlobIQ", "GK", "General Knowledge", "Current Affairs", "Exam Preparation", "Mock Tests", "Quizzes"],
+  applicationName: "GlobIQ",
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "GlobIQ — Next-Gen Global GK & Current Affairs Platform",
+    description: "Personalised, exam-centric GK and current affairs — one canonical knowledge system.",
+    siteName: "GlobIQ",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "GlobIQ — Next-Gen Global GK & Current Affairs Platform",
+    description: "Personalised, exam-centric GK and current affairs — one canonical knowledge system.",
   },
 };
 

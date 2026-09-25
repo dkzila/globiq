@@ -51,10 +51,19 @@ prompt
 
 server.log
 
-# GlobIQ private sandbox files (credentials — NEVER commit)
+# GlobIQ sandbox-internal files & folders (NEVER commit — see .globiq/credentials.md)
 .globiq/
 tool-results/
 download/
+.zscripts/
+Caddyfile
+db/
+mini-services/
+examples/
+tests/
+worklog.md
+docs/GlobIQ_Master_Plan.md
+docs/PROJECT_ANALYSIS.md
 
 # Skills directory
 /skills/

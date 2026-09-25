@@ -1,12 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  /* config options here */
+  // No `output: "standalone"` — Vercel manages builds itself (P1-S1 decision).
+  reactStrictMode: true,
   typescript: {
-    ignoreBuildErrors: true,
+    // Fail builds on type errors — quality is enforced by `bun run type-check` in CI.
+    ignoreBuildErrors: false,
   },
-  reactStrictMode: false,
 };
 
 export default nextConfig;

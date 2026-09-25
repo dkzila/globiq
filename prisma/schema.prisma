@@ -1,32 +1,125 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// ============================================================
+// GlobIQ — Prisma Schema
+// Governing spec: GlobIQ_Master_Plan.md (v2.0) — Sections 6, 14, 35
+//
+// P1-S1 scope (this file): database switch to PostgreSQL (Supabase) +
+// foundation models: Language, Country, CountryLanguage, base User.
+//
+// Upcoming (do NOT add early — see Master Plan §41/§48 session protocol):
+//   P1-S2: auth/identity tables & user auth fields
+//   P1-S3: country/language configuration system (APIs/CRUD)
+//   P1-S4: Taxonomy (Topic tree)
+//   P1-S5: AuditLog + permission enforcement
+//   P2+:  KnowledgeUnit, ContentItem, Source, Exam, ExamVersion,
+//         SyllabusNode, ExamMapping, UserFollow, SavedItem, …
+// ============================================================
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
+  // Named GLOBIQ_DATABASE_URL (not DATABASE_URL) deliberately: the deployment
+  // environment may inject a stale DATABASE_URL — this variable is always
+  // sourced from .env (dev) or the hosting dashboard (Vercel).
+  url      = env("GLOBIQ_DATABASE_URL")
 }
+
+// ---------- Enums ----------
+
+enum LanguageDirection {
+  LTR
+  RTL
+}
+
+enum LanguageStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CountryStatus {
+  ACTIVE
+  COMING_SOON
+  INACTIVE
+}
+
+// ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
+
+// Language is a first-class localisation dimension. `code` is the URL segment
+// used for non-default languages (e.g. /hi/). Translations reference canonical
+// content — language never duplicates knowledge identity (§35).
+model Language {
+  id         String            @id @default(cuid())
+  code       String            @unique // e.g. "en", "hi", "cy"
+  name       String // English reference name, e.g. "Hindi"
+  nativeName String? // endonym, e.g. "हिन्दी"
+  direction  LanguageDirection @default(LTR)
+  status     LanguageStatus    @default(ACTIVE)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  // Countries where this language is the default (URL omits the segment)
+  defaultForCountries Country[] @relation("CountryDefaultLanguage")
+  // Join to countries that support this language
+  countryLinks        CountryLanguage[]
+  users               User[]
+
+  @@index([status])
+}
+
+// Country is a first-class scope enforced server-side (§14, §15).
+// India is the default root market (isDefault = true): its slug never
+// appears in URLs. Other countries live under /{country.slug}/ (§16).
+model Country {
+  id                String        @id @default(cuid())
+  isoCode           String        @unique // ISO 3166-1 alpha-2, e.g. "IN", "GB"
+  slug              String        @unique // URL segment for non-default countries, e.g. "uk"
+  name              String
+  timezone          String? // IANA timezone, e.g. "Asia/Kolkata"
+  status            CountryStatus @default(ACTIVE)
+  isDefault         Boolean       @default(false) // exactly one root market (India)
+  defaultLanguageId String? // primary language; omitted from URLs (§35)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  defaultLanguage Language?         @relation("CountryDefaultLanguage", fields: [defaultLanguageId], references: [id])
+  supported       CountryLanguage[] // languages configured for this country only (§35)
+  users           User[]
+
+  @@index([status])
+}
+
+// Explicit join table (no scalar lists): the set of languages a country
+// actually exposes — never a global language list (§35).
+model CountryLanguage {
+  id         String   @id @default(cuid())
+  countryId  String
+  languageId String
+  createdAt  DateTime @default(now())
+
+  country  Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  language Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  @@unique([countryId, languageId])
+  @@index([languageId])
+}
+
+// ---------- Base User (auth lands in P1-S2 — Master Plan §6, §43) ----------
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+  id                  String   @id @default(cuid())
+  email               String   @unique
+  name                String?
+  homeCountryId       String?
+  preferredLanguageId String?
+  // auth fields, roles, onboarding state → P1-S2 / P5-S3
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  homeCountry       Country?  @relation(fields: [homeCountryId], references: [id])
+  preferredLanguage Language? @relation(fields: [preferredLanguageId], references: [id])
+
+  @@index([homeCountryId])
+  @@index([preferredLanguageId])
 }
