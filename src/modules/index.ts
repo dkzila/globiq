@@ -31,7 +31,7 @@ export const MODULES: ModuleDescriptor[] = [
   { key: 'exams-syllabus', name: 'Exams & Syllabus', description: 'Country-scoped exams with §36 versioned structures and version-pinned §13 topic-linked SyllabusNode trees', phase: 'P3', session: 'P3-S1…S2', status: 'delivered' },
   { key: 'exam-mapping', name: 'Exam Mapping', description: '§8 requirement-layer mappings (one unit, many depths), public coverage reads + exam-facing pages, unit-side exam-coverage mirror, multi-exam union & deduplication engine', phase: 'P3', session: 'P3-S3…S5', status: 'delivered' },
   { key: 'search', name: 'Search', description: 'Country/exam-aware search abstraction and indexing (§17 tiers: exact/prefix/alias, typo tolerance, language-aware FTS, canonical dedup, explanations)', phase: 'P4', session: 'P4-S1', status: 'delivered' },
-  { key: 'seo', name: 'SEO', description: 'Canonical URLs, hreflang, sitemaps, structured data', phase: 'P4', session: 'P4-S2…S5', status: 'planned' },
+  { key: 'seo', name: 'SEO', description: 'Country homepages (§34 discovery hubs), topic landing pages (§33), canonical URLs, hreflang, sitemaps, structured data', phase: 'P4', session: 'P4-S2…S5', status: 'in_progress' },
   { key: 'follow-save', name: 'Follow & Save', description: 'UserFollow signals vs SavedItem collections (separate concepts)', phase: 'P5', session: 'P5-S1…S2', status: 'planned' },
   { key: 'personalisation', name: 'Personalisation', description: 'Goals, explainable recommendations, dashboard, reset controls', phase: 'P5', session: 'P5-S3…S5', status: 'planned' },
   { key: 'current-affairs', name: 'Current Affairs', description: 'Event-centric current affairs, sources, freshness lifecycle', phase: 'P6', session: 'P6-S1…S5', status: 'planned' },

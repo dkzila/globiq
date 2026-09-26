@@ -23,11 +23,17 @@
  * (current versions of the reader's country's ACTIVE exams, §8 vocabulary,
  * §16 exam-page paths) — the data behind the §22 knowledge page's
  * exam-coverage layer.
+ *
+ * P4-S2: `mappingInEffect` (the pure §8 day-granular effective-period
+ * predicate) joins the public interface — the seo module's homepage/landing
+ * compositions apply the identical liveness rule when aggregating §8 counts,
+ * so no composition can ever drift from the requirement layer's semantics.
  */
 export {
   MappingError,
   toMappingErrorResponse,
   mappingEditability,
+  mappingInEffect,
   getAdminVersionMappings,
   searchUnitsForMapping,
   createExamMapping,
