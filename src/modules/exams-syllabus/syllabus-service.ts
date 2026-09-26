@@ -597,6 +597,16 @@ export async function removeSyllabusNode(
       `This node has ${childCount} child node${childCount === 1 ? '' : 's'} — remove or move them first`
     )
   }
+  // P3-S3 guard: a node carrying ExamMappings is referenced §8 requirement
+  // data — deleting it would silently drop exam requirements. Mappings must
+  // be removed explicitly first (each removal is audited).
+  const mappingCount = await db.examMapping.count({ where: { syllabusNodeId: node.id } })
+  if (mappingCount > 0) {
+    throw new ExamError(
+      'NODE_HAS_MAPPINGS',
+      `This node carries ${mappingCount} exam mapping${mappingCount === 1 ? '' : 's'} — remove them first (mappings are explicit editorial data, never silently dropped)`
+    )
+  }
 
   await db.syllabusNode.delete({ where: { id: node.id } })
 
@@ -714,6 +724,17 @@ export async function importSyllabusOutline(
   meta: AuditRequestMeta = {}
 ): Promise<AdminVersionTree> {
   const { exam, version } = await loadEditableTree(actor, examId, versionId, 'syllabus.import', meta)
+
+  // P3-S3 guard: replacing the tree would orphan every mapping pinned to its
+  // nodes. An import over a mapping-bearing version must be preceded by an
+  // explicit mapping cleanup (audited) — never a silent loss (§36 spirit).
+  const existingMappings = await db.examMapping.count({ where: { examVersionId: version.id } })
+  if (existingMappings > 0) {
+    throw new ExamError(
+      'VERSION_HAS_MAPPINGS',
+      `This version carries ${existingMappings} exam mapping${existingMappings === 1 ? '' : 's'} — remove them before replacing the tree (imports never silently drop mappings)`
+    )
+  }
 
   const parsed = parseSyllabusOutline(input.outline ?? '')
   const previousCount = await db.syllabusNode.count({ where: { examVersionId: version.id } })

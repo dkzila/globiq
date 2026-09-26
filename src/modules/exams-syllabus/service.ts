@@ -94,6 +94,10 @@ export type ExamErrorCode =
   | 'TOPIC_NOT_FOUND'
   | 'TOPIC_COUNTRY_MISMATCH'
   | 'OUTLINE_INVALID'
+  // P3-S3 reference guards (mappings are §36 history — nodes/trees carrying
+  // them never disappear silently; see exam-mapping/mapping-service.ts)
+  | 'NODE_HAS_MAPPINGS'
+  | 'VERSION_HAS_MAPPINGS'
 
 const ERROR_STATUS: Record<ExamErrorCode, number> = {
   EXAM_NOT_FOUND: 404,
@@ -119,6 +123,8 @@ const ERROR_STATUS: Record<ExamErrorCode, number> = {
   TOPIC_NOT_FOUND: 404,
   TOPIC_COUNTRY_MISMATCH: 400,
   OUTLINE_INVALID: 400,
+  NODE_HAS_MAPPINGS: 409,
+  VERSION_HAS_MAPPINGS: 409,
 }
 
 export class ExamError extends Error {
@@ -185,13 +191,18 @@ function windowsOverlap(
 
 const CUID_PATTERN = /^c[a-z0-9]{20,}$/
 
-export type VersionWithCount = ExamVersion & { _count: { syllabusNodes: number } }
+/** Version + denormalised reference counts (nodes P3-S2, mappings P3-S3). */
+export type VersionWithCount = ExamVersion & {
+  _count: { syllabusNodes: number; examMappings: number }
+}
 export type ExamRow = Exam & { versions: VersionWithCount[] }
 
 export async function findExam(ref: string): Promise<ExamRow | null> {
   return db.exam.findFirst({
     where: CUID_PATTERN.test(ref) ? { id: ref } : { slug: ref.toLowerCase() },
-    include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
+    include: {
+      versions: { include: { _count: { select: { syllabusNodes: true, examMappings: true } } } },
+    },
   })
 }
 
@@ -232,6 +243,8 @@ export function toVersionRef(version: VersionWithCount): ExamVersionRef {
     isCurrent: windowContains(version),
     isUpcoming: version.effectiveFrom.getTime() > Date.now(),
     nodeCount: version._count.syllabusNodes,
+    /** Mappings pinned to this version (§6 — P3-S3 requirement layer). */
+    mappingCount: version._count.examMappings,
     createdAt: version.createdAt.toISOString(),
     updatedAt: version.updatedAt.toISOString(),
   }
@@ -404,7 +417,7 @@ export async function getPublicExams(query: PublicExamListQuery): Promise<Public
       orderBy: [{ name: 'asc' }, { id: 'asc' }], // deterministic (§37)
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
-      include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
+      include: { versions: { include: { _count: { select: { syllabusNodes: true, examMappings: true } } } } },
     }),
     db.exam.count({ where }),
   ])
@@ -497,7 +510,7 @@ export async function getAdminExams(
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], // deterministic (§37)
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
-      include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
+      include: { versions: { include: { _count: { select: { syllabusNodes: true, examMappings: true } } } } },
     }),
     db.exam.count({ where }),
   ])
@@ -583,7 +596,7 @@ export async function createExam(
       notes: input.notes ?? null,
       createdById: actor.userId,
     },
-    include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
+    include: { versions: { include: { _count: { select: { syllabusNodes: true, examMappings: true } } } } },
   })
 
   await recordAudit({
@@ -626,7 +639,7 @@ export async function updateExam(
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
     },
-    include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
+    include: { versions: { include: { _count: { select: { syllabusNodes: true, examMappings: true } } } } },
   })
 
   await recordAudit({
@@ -669,7 +682,7 @@ export async function transitionExam(
   const updated = await db.exam.update({
     where: { id: exam.id },
     data: { status: to },
-    include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
+    include: { versions: { include: { _count: { select: { syllabusNodes: true, examMappings: true } } } } },
   })
 
   await recordAudit({
@@ -855,14 +868,23 @@ export async function removeExamVersion(
   if (!latest || latest.id !== version.id) {
     throw new ExamError('VERSION_NOT_LATEST', 'Only the latest version can be removed as a correction')
   }
-  // P3-S2 guard: a version carrying SyllabusNodes is referenced — it has
-  // staged/historical syllabus structure and is therefore history (§36). The
-  // pre-effective correction path only exists for unreferenced versions.
+  // P3-S2/S3 guards: a version carrying SyllabusNodes OR ExamMappings is
+  // referenced — it holds staged/historical structure and is therefore §36
+  // history. The pre-effective correction path only exists for unreferenced
+  // versions (a mapping-bearing tree must be unmapped node by node first —
+  // removing mappings is an explicit, audited editorial act).
   const nodeCount = await db.syllabusNode.count({ where: { examVersionId: version.id } })
   if (nodeCount > 0) {
     throw new ExamError(
       'VERSION_REFERENCED',
       `This version carries ${nodeCount} syllabus node${nodeCount === 1 ? '' : 's'} — clear its tree first (a referenced version is §36 history)`
+    )
+  }
+  const mappingCount = await db.examMapping.count({ where: { examVersionId: version.id } })
+  if (mappingCount > 0) {
+    throw new ExamError(
+      'VERSION_REFERENCED',
+      `This version carries ${mappingCount} exam mapping${mappingCount === 1 ? '' : 's'} — remove them first (a referenced version is §36 history)`
     )
   }
 

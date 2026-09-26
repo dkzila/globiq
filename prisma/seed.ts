@@ -1564,12 +1564,218 @@ async function main() {
     syllabusNodesSeeded += await createNodes(seed.nodes, null, 0)
   }
 
+  // ---------- P3-S3: ExamMapping seeds (Master Plan §6, §8, §45, Appendix A) ----------
+  // §45: "Sample mappings where two exams share one Knowledge Unit at different
+  // depths (mirroring Appendix A)" — the Fundamental Rights unit maps to UPSC
+  // (ANALYTICAL), SSC (FACT) and MP Police (ONE_LINE): the exact Appendix A
+  // demo the §11 union engine (P3-S4) will deduplicate. Current trees are
+  // frozen §36 history, so seed rows are inserted directly (the console can
+  // still edit them — mappings stay writable on the CURRENT version, §12);
+  // one mapping rides the superseded UPSC window to demo "old mappings remain
+  // historically queryable".
+  interface MappingSeed {
+    unitSlug: string
+    examSlug: string
+    versionLabel: string
+    nodeName: string
+    relevance: 'DIRECT' | 'PARTIAL' | 'CONTEXTUAL'
+    priority: 'CORE' | 'SUPPORTING' | 'LOW'
+    requiredDepth: 'ONE_LINE' | 'FACT' | 'CONCEPT' | 'DETAILED' | 'ANALYTICAL'
+    questionLikelihood: 'HIGH' | 'MEDIUM' | 'LOW'
+    expectedScope?: string
+    sourceBasis?: string
+    notes?: string
+    effectiveFrom?: Date
+  }
+
+  const mappingSeeds: MappingSeed[] = [
+    {
+      // Appendix A anchor: the same canonical unit at three depths.
+      unitSlug: 'fundamental-rights-articles-12-35',
+      examSlug: 'upsc-civil-services',
+      versionLabel: `${year} syllabus`,
+      nodeName: 'Fundamental Rights and Fundamental Duties',
+      relevance: 'DIRECT',
+      priority: 'CORE',
+      requiredDepth: 'ANALYTICAL',
+      questionLikelihood: 'HIGH',
+      expectedScope:
+        'Full Part III framework — the six rights, Articles 12–35, enforcement under Article 32 and the landmark judgments (Maneka Gandhi).',
+      sourceBasis: 'Named in the Mains GS-II syllabus (Fundamental Rights and Fundamental Duties).',
+    },
+    {
+      unitSlug: 'fundamental-rights-articles-12-35',
+      examSlug: 'ssc-cgl',
+      versionLabel: `${year} syllabus`,
+      nodeName: 'Indian Polity and Constitution',
+      relevance: 'DIRECT',
+      priority: 'CORE',
+      requiredDepth: 'FACT',
+      questionLikelihood: 'HIGH',
+      expectedScope: 'One-line facts — article numbers and the six rights by name.',
+      sourceBasis: 'SSC CGL Tier-I General Awareness: Indian Polity and Constitution.',
+    },
+    {
+      unitSlug: 'fundamental-rights-articles-12-35',
+      examSlug: 'mp-police-constable',
+      versionLabel: `${year - 1} recruitment syllabus`,
+      nodeName: 'Indian Constitution',
+      relevance: 'DIRECT',
+      priority: 'SUPPORTING',
+      requiredDepth: 'ONE_LINE',
+      questionLikelihood: 'MEDIUM',
+      expectedScope: 'Article numbers only — which right lives in which Article.',
+      sourceBasis: 'MP Police Constable Part A: Indian Constitution basics.',
+    },
+    {
+      unitSlug: 'right-to-constitutional-remedies-article-32',
+      examSlug: 'upsc-civil-services',
+      versionLabel: `${year} syllabus`,
+      nodeName: 'Fundamental Rights and Fundamental Duties',
+      relevance: 'DIRECT',
+      priority: 'CORE',
+      requiredDepth: 'DETAILED',
+      questionLikelihood: 'HIGH',
+      expectedScope: 'The five writs and the "heart and soul" framing; Article 359 suspension context.',
+      sourceBasis: 'Prelims + Mains pattern: writs under Article 32 recur every cycle.',
+    },
+    {
+      unitSlug: 'un-security-council-permanent-members',
+      examSlug: 'upsc-civil-services',
+      versionLabel: `${year} syllabus`,
+      nodeName: 'Important international institutions and agencies',
+      relevance: 'DIRECT',
+      priority: 'SUPPORTING',
+      requiredDepth: 'CONCEPT',
+      questionLikelihood: 'MEDIUM',
+      expectedScope: 'P5 membership, veto mechanics and the reform debate (India\'s bid).',
+      sourceBasis: 'GS-II syllabus: important international institutions, agencies and fora.',
+    },
+    {
+      unitSlug: 'ashoka-kalinga-war-261-bce',
+      examSlug: 'upsc-civil-services',
+      versionLabel: `${year} syllabus`,
+      nodeName: 'History of India and Indian National Movement',
+      relevance: 'DIRECT',
+      priority: 'CORE',
+      requiredDepth: 'FACT',
+      questionLikelihood: 'HIGH',
+      expectedScope: 'Date, 13th Rock Edict casualties and the Dhamma Vijaya turn.',
+      sourceBasis: 'Ancient India is a Prelims staple; Mauryan history recurs in PYQs.',
+    },
+    {
+      unitSlug: 'ashoka-kalinga-war-261-bce',
+      examSlug: 'ssc-cgl',
+      versionLabel: `${year} syllabus`,
+      nodeName: 'History of India',
+      relevance: 'PARTIAL',
+      priority: 'SUPPORTING',
+      requiredDepth: 'ONE_LINE',
+      questionLikelihood: 'MEDIUM',
+      expectedScope: 'The 13th Rock Edict death toll and the Dhamma turn only.',
+      sourceBasis: 'SSC CGL Tier-I General Awareness: History of India.',
+    },
+    {
+      unitSlug: 'chandrayaan-3-landing-2023',
+      examSlug: 'upsc-civil-services',
+      versionLabel: `${year} syllabus`,
+      nodeName: 'Current events of national and international importance',
+      relevance: 'DIRECT',
+      priority: 'CORE',
+      requiredDepth: 'FACT',
+      questionLikelihood: 'HIGH',
+      expectedScope: 'Landing date, south-pole first, Shiv Shakti Point, National Space Day.',
+      sourceBasis: 'Current affairs — National Space Day (23 August) anchors.',
+      effectiveFrom: new Date('2023-08-23T00:00:00Z'), // §8 effective_period demo: valid from the landing
+    },
+    {
+      unitSlug: 'chandrayaan-3-landing-2023',
+      examSlug: 'mp-police-constable',
+      versionLabel: `${year - 1} recruitment syllabus`,
+      nodeName: 'Current affairs',
+      relevance: 'DIRECT',
+      priority: 'SUPPORTING',
+      requiredDepth: 'ONE_LINE',
+      questionLikelihood: 'MEDIUM',
+      expectedScope: 'First country near the lunar south pole.',
+      sourceBasis: 'MP Police Part A: current affairs.',
+    },
+    {
+      unitSlug: 'chandrayaan-3-landing-2023',
+      examSlug: 'ssc-cgl',
+      versionLabel: `${year} syllabus`,
+      nodeName: 'Current affairs',
+      relevance: 'DIRECT',
+      priority: 'CORE',
+      requiredDepth: 'FACT',
+      questionLikelihood: 'HIGH',
+      expectedScope: 'Landing date and the south-pole first.',
+      sourceBasis: 'SSC CGL Tier-I: recent current affairs.',
+    },
+    {
+      // §36 historical demo: mappings on the superseded window stay queryable.
+      unitSlug: 'fundamental-rights-articles-12-35',
+      examSlug: 'upsc-civil-services',
+      versionLabel: `${year - 1} syllabus (superseded)`,
+      nodeName: 'Indian Polity and Governance',
+      relevance: 'DIRECT',
+      priority: 'CORE',
+      requiredDepth: 'CONCEPT',
+      questionLikelihood: 'HIGH',
+      expectedScope: 'Part III overview at Prelims depth as the old window required.',
+      sourceBasis: 'Previous-cycle syllabus wording — kept as §36 history.',
+      notes: 'Historical mapping preserved on the superseded window (§36 old mappings remain queryable).',
+    },
+  ]
+
+  let mappingsSeeded = 0
+  for (const seed of mappingSeeds) {
+    const unit = await prisma.knowledgeUnit.findUnique({ where: { slug: seed.unitSlug }, select: { id: true } })
+    if (!unit) continue
+    const exam = await prisma.exam.findUnique({
+      where: { slug: seed.examSlug },
+      include: { versions: true },
+    })
+    if (!exam) continue
+    const version = exam.versions.find((row) => row.label === seed.versionLabel)
+    if (!version) continue
+    const node = await prisma.syllabusNode.findFirst({
+      where: { examVersionId: version.id, name: seed.nodeName },
+      select: { id: true },
+    })
+    if (!node) continue
+    // Idempotent: never duplicate or overwrite a live-edited mapping (§36 spirit).
+    const existing = await prisma.examMapping.findUnique({
+      where: { knowledgeUnitId_syllabusNodeId: { knowledgeUnitId: unit.id, syllabusNodeId: node.id } },
+      select: { id: true },
+    })
+    if (existing) continue
+
+    await prisma.examMapping.create({
+      data: {
+        knowledgeUnitId: unit.id,
+        examVersionId: version.id,
+        syllabusNodeId: node.id,
+        relevance: seed.relevance,
+        priority: seed.priority,
+        requiredDepth: seed.requiredDepth,
+        questionLikelihood: seed.questionLikelihood,
+        expectedScope: seed.expectedScope ?? null,
+        sourceBasis: seed.sourceBasis ?? null,
+        notes: seed.notes ?? null,
+        effectiveFrom: seed.effectiveFrom ?? null,
+        createdById: admin.id,
+      },
+    })
+    mappingsSeeded += 1
+  }
+
   console.log(
     `Seed complete → languages: ${[en.code, hi.code, fr.code].join(', ')} | countries: ${[
       `${india.isoCode} (default)`,
       `${uk.isoCode} (coming soon)`,
       `${france.isoCode} (coming soon)`,
-    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | dev writers: ${writerIn.email} + ${writerHi.email} (Hindi-scoped) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''}) | editorial tasks: ${tasksSeeded} | exams: ${examsSeeded} (${examVersionsSeeded} versions${syllabusNodesSeeded > 0 ? `, ${syllabusNodesSeeded} syllabus nodes` : ''})`
+    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | dev writers: ${writerIn.email} + ${writerHi.email} (Hindi-scoped) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''}) | editorial tasks: ${tasksSeeded} | exams: ${examsSeeded} (${examVersionsSeeded} versions${syllabusNodesSeeded > 0 ? `, ${syllabusNodesSeeded} syllabus nodes` : ''}${mappingsSeeded > 0 ? `, ${mappingsSeeded} exam mappings` : ''})`
   )
 }
 

@@ -1,13 +1,14 @@
 'use client'
 
 /**
- * GlobIQ — Foundation Status Page (P1-S1 → P3-S2)
+ * GlobIQ — Foundation Status Page (P1-S1 → P3-S3)
  *
  * Temporary homepage: proves the foundation end-to-end (database, API-first
  * pattern, module registry, token-based identity, the canonical content
  * stack, the §22 reading experience, the country-scoped exam layer with its
- * §36 versioned structures and version-pinned syllabus trees) until the real
- * India discovery homepage lands in P4-S2 (Master Plan §34).
+ * §36 versioned structures, version-pinned syllabus trees and the §8
+ * exam-mapping requirement layer) until the real India discovery homepage
+ * lands in P4-S2 (Master Plan §34).
  * This page consumes the same /api endpoints a future mobile client would
  * use (§4, §39).
  */
@@ -44,6 +45,7 @@ import { AuditSection } from '@/components/audit/audit-section'
 import { ContentSection } from '@/components/content/content-section'
 import { ExamsSection } from '@/components/exams/exams-section'
 import { SyllabusSection } from '@/components/exams/syllabus-section'
+import { MappingSection } from '@/components/exams/mapping-section'
 import { KnowledgeSection } from '@/components/knowledge/knowledge-section'
 import { LocaleSection } from '@/components/locale/locale-section'
 import { SourceSection } from '@/components/sources/source-section'
@@ -149,7 +151,7 @@ export default function FoundationStatusPage() {
               variant="outline"
               className="hidden shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 sm:inline-flex"
             >
-              Phase 3 · Session 2 — Exams, Versions & Syllabus Trees
+              Phase 3 · Session 3 — Exam Mappings & Coverage
             </Badge>
             <HeaderAuth />
           </div>
@@ -353,6 +355,9 @@ export default function FoundationStatusPage() {
         {/* ---------- Syllabus trees (P3-S2) ---------- */}
         <SyllabusSection />
 
+        {/* ---------- Exam mappings — §8 requirement layer (P3-S3) ---------- */}
+        <MappingSection />
+
         {/* ---------- Audit trail (P1-S5, ADMIN only) ---------- */}
         <AuditSection />
 
@@ -406,7 +411,7 @@ export default function FoundationStatusPage() {
           </div>
           <p className="text-sm text-zinc-600">
             One chat = one session (§41). Currently executing{' '}
-            <strong className="text-zinc-900">P3-S2 of 55 sessions</strong> in the vertical slice.
+            <strong className="text-zinc-900">P3-S3 of 55 sessions</strong> in the vertical slice.
           </p>
           <ol className="flex flex-wrap gap-2">
             {PHASES.map((phase) => (

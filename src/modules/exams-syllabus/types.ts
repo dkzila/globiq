@@ -58,6 +58,8 @@ export interface ExamVersionRef {
   isUpcoming: boolean
   /** Syllabus nodes pinned to this version (§6 — P3-S2 trees). */
   nodeCount: number
+  /** Exam mappings pinned to this version (§6/§8 — P3-S3 requirement layer). */
+  mappingCount: number
   createdAt: string
   updatedAt: string
 }

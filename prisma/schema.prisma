@@ -6,8 +6,7 @@
 // foundation models: Language, Country, CountryLanguage, base User.
 //
 // Upcoming (do NOT add early — see Master Plan §41/§48 session protocol):
-//   P3-S2: SyllabusNode hierarchy
-//   P3-S3: ExamMapping
+//   P3-S4: multi-exam union engine (computed — no new tables per §11/§46.3)
 //   P5+:   UserFollow, SavedItem, CurrentEvent, Question, MockTest, …
 // ============================================================
 
@@ -147,6 +146,7 @@ model KnowledgeUnit {
   country   Country? @relation("KnowledgeUnitCountry", fields: [countryId], references: [id])
   createdBy User?   @relation("KnowledgeUnitAuthor", fields: [createdById], references: [id], onDelete: SetNull)
   contentItems ContentItem[] // representations of this canonical record (§7, P2-S2)
+  examMappings ExamMapping[] @relation("ExamMappingUnit") // P3-S3 requirement layer (§8)
 
   // Deduplication is by canonical identity (§11): within one topic, a canonical
   // name identifies exactly one unit. Never merge distinct concepts; never
@@ -461,6 +461,113 @@ model Exam {
   @@index([level])
 }
 
+// ---------- P3-S3: ExamMapping (Master Plan §6, §8, §11, §12, §36) ----------
+
+// §8 requirement-layer vocabulary. `relevance` answers §8's "Whether the
+// knowledge unit is relevant to this exam/syllabus node" as the NATURE of the
+// fit (how squarely the unit sits inside the node's scope), kept deliberately
+// distinct from `priority` (study importance) — two different axes:
+// DIRECT = squarely within the node's scope; PARTIAL = only part of the unit
+// falls inside (expectedScope describes which part); CONTEXTUAL = background
+// context the node's questions may assume, not ask directly.
+enum MappingRelevance {
+  DIRECT
+  PARTIAL
+  CONTEXTUAL
+}
+
+// §8 priority: "Importance such as core/supporting/low priority; avoid
+// simplistic universal scoring" — an ordinal editorial judgement that feeds
+// §11 step 7 ranking, never a numeric score.
+enum MappingPriority {
+  CORE
+  SUPPORTING
+  LOW
+}
+
+// §8 required_depth: "one-line, fact, concept, detailed, analytical, etc." —
+// the depth of understanding THIS exam demands of the SAME canonical unit.
+// The §11 engine unions mappings by taking the MAXIMUM across followed exams
+// (Appendix A: Exam A ONE_LINE + Exam B ANALYTICAL → render the deep view once).
+enum RequiredDepth {
+  ONE_LINE
+  FACT
+  CONCEPT
+  DETAILED
+  ANALYTICAL
+}
+
+// §8 question_likelihood: "Editorial/analytical metadata; not a guaranteed
+// prediction" — surfaces on coverage views with exactly that disclaimer.
+enum QuestionLikelihood {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// §6 ExamMapping row: "Knowledge-to-exam relationship — knowledge_unit_id,
+// exam_version_id, syllabus_node_id, relevance, priority, required_depth,
+// expected_scope, question_likelihood, source_basis, effective_period, notes".
+// This is §8's requirement layer: the SAME canonical KnowledgeUnit maps to
+// many exams at different depths — never copied content (§46.2 "Exam mapping
+// is a relationship, not copied content").
+//
+// ANCHORS: a mapping is pinned to exactly one SyllabusNode (which pins it to
+// the node's ExamVersion) and one KnowledgeUnit. The triple is §11 step 3's
+// expansion input ("Expand each ExamVersion's SyllabusNode tree into its
+// mapped canonical KnowledgeUnits via ExamMapping") and §13's only
+// exam→knowledge path.
+//
+// §36 EDITABILITY (mapping-specific, and deliberately different from the
+// tree rule): the SyllabusNode TREE freezes the moment its version starts,
+// but MAPPINGS keep flowing on the CURRENT version — §12 step 5 requires "a
+// current-affairs item [to] flow directly into a followed exam's combined
+// queue the moment it's mapped", which is only possible if mappings may be
+// added to an in-effect version (events occur mid-window). Therefore:
+//   staged = DRAFT exam or future-dated version (tree + mappings editable);
+//   live   = the CURRENT version in effect — mappings editable (audited),
+//            tree still frozen (P3-S2 rule unchanged);
+//   frozen = a version that started but is no longer current (superseded) —
+//            its mappings are §36 history, "old mappings remain historically
+//            queryable", and never mutate again;
+//   locked = RETIRED exam.
+// `effectiveFrom/effectiveTo` (§8 "effective_period — when the mapping is
+// valid") bound a mapping's validity INSIDE the version's life at day
+// granularity (e.g. a current-affairs mapping relevant until the next exam
+// cycle); null = valid for the whole version window.
+model ExamMapping {
+  id                String             @id @default(cuid())
+  knowledgeUnitId   String // §7 canonical record — one unit, many mappings
+  examVersionId     String // pinned via the node's version (§36 anchor)
+  syllabusNodeId    String // §6/§13 anchor — the node the unit attaches to
+  relevance         MappingRelevance   @default(DIRECT)
+  priority          MappingPriority    @default(SUPPORTING)
+  requiredDepth     RequiredDepth      @default(CONCEPT)
+  questionLikelihood QuestionLikelihood @default(MEDIUM)
+  expectedScope     String? // §8 "what portion/aspect is actually relevant"
+  sourceBasis       String? // §8 "why the mapping exists" (notification §, PYQs, editor)
+  effectiveFrom     DateTime? // §8 effective_period start (inclusive; null = version start)
+  effectiveTo       DateTime? // §8 effective_period end (inclusive last day; null = no end)
+  notes             String? // §8 "human editorial explanation"
+  createdById       String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  knowledgeUnit KnowledgeUnit @relation("ExamMappingUnit", fields: [knowledgeUnitId], references: [id], onDelete: Cascade)
+  examVersion   ExamVersion   @relation("ExamMappingVersion", fields: [examVersionId], references: [id], onDelete: Cascade)
+  syllabusNode  SyllabusNode  @relation("ExamMappingNode", fields: [syllabusNodeId], references: [id], onDelete: Cascade)
+  createdBy     User?         @relation("ExamMappingAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  // One mapping per unit per node (the node implies the version — a unit may
+  // still map to several nodes of the same version, e.g. Prelims polity and
+  // Mains Fundamental Rights).
+  @@unique([knowledgeUnitId, syllabusNodeId])
+  @@index([examVersionId])
+  @@index([syllabusNodeId])
+  @@index([knowledgeUnitId])
+  @@index([knowledgeUnitId, requiredDepth])
+}
+
 // §6 ExamVersion row: "Versioned exam structure — id, exam_id, effective_from,
 // effective_to, source". §36: "Exam syllabus changes create a new ExamVersion.
 // Old mappings remain historically queryable." Windows are day-granular and
@@ -486,6 +593,7 @@ model ExamVersion {
   exam      Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
   createdBy User? @relation("ExamVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
   syllabusNodes SyllabusNode[]
+  examMappings ExamMapping[] @relation("ExamMappingVersion") // P3-S3
 
   @@index([examId, effectiveFrom])
 }
@@ -516,7 +624,7 @@ model SyllabusNode {
   parent      SyllabusNode?  @relation("SyllabusTree", fields: [parentId], references: [id])
   children    SyllabusNode[] @relation("SyllabusTree")
   topic       Topic?          @relation("SyllabusNodeTopic", fields: [topicId], references: [id])
-  // P3-S3: examMappings ExamMapping[]
+  examMappings ExamMapping[] @relation("ExamMappingNode") // P3-S3
 
   @@index([examVersionId, parentId, priority])
   @@index([topicId])
@@ -633,6 +741,7 @@ model User {
   resolvedEditorialTasks EditorialTask[] @relation("EditorialTaskResolver")
   createdExams           Exam[]        @relation("ExamAuthor") // P3-S1
   createdExamVersions    ExamVersion[] @relation("ExamVersionAuthor") // P3-S1
+  createdExamMappings    ExamMapping[] @relation("ExamMappingAuthor") // P3-S3
 
   @@index([homeCountryId])
   @@index([preferredLanguageId])

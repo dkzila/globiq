@@ -128,6 +128,12 @@ export const AUDIT_ACTIONS = {
   syllabusImport: 'syllabus.import',
   /** Object-level syllabus denials (country/scope mismatch — §20 signal). */
   syllabusDenied: 'syllabus.denied',
+  /** P3-S3 exam mappings (§8/§36 — every mapping mutation is audited). */
+  examMappingCreate: 'exam.mapping.create',
+  examMappingUpdate: 'exam.mapping.update',
+  examMappingRemove: 'exam.mapping.remove',
+  /** Object-level mapping denials (country/scope/state mismatch — §20 signal). */
+  examMappingDenied: 'exam.mapping.denied',
 } as const
 
 /** Object type vocabulary (§6 entities that exist so far). */
@@ -146,5 +152,6 @@ export const AUDIT_OBJECT_TYPES = {
   exam: 'Exam',
   examVersion: 'ExamVersion',
   syllabusNode: 'SyllabusNode',
+  examMapping: 'ExamMapping',
   permission: 'Permission',
 } as const

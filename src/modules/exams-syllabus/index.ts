@@ -9,8 +9,10 @@
  *        windows; the current version is the §11 engine's resolution point).
  * P3-S2: SyllabusNode hierarchy — version-pinned trees (§6/§13/§36) with the
  *        canonical topic link, staged/frozen editability, outline import and
- *        the public "syllabus a reader sees today" read. ExamMapping (P3-S3)
- *        anchors on these nodes.
+ *        the public "syllabus a reader sees today" read.
+ * P3-S3: the exam-mapping module (src/modules/exam-mapping) anchors on these
+ *        rows; the helpers below are exported for its service (no import
+ *        cycle — exam-mapping imports exams-syllabus, never the reverse).
  */
 export {
   ExamError,
@@ -25,6 +27,13 @@ export {
   createExamVersion,
   updateExamVersion,
   removeExamVersion,
+  // Shared internals consumed by the P3-S3 exam-mapping module (§28 sibling).
+  findExam,
+  assertCanManageExam,
+  resolvePublicContext,
+  windowContains,
+  currentVersionOf,
+  toVersionRef,
 } from './service'
 export {
   createSyllabusNode,
@@ -81,6 +90,7 @@ export type {
   PublicSyllabusNode,
   SyllabusEditability,
 } from './types'
+export type { ExamRow, VersionWithCount } from './service'
 export {
   EXAM_TRANSITIONS,
   EXAM_EDITABILITY,
