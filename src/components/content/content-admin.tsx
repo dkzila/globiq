@@ -532,7 +532,7 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
           <p className="mt-0.5 text-xs text-zinc-500">
             One rendering per language × format (§7) — the fact itself is never re-entered.
           </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <UILabel htmlFor="content-create-format" className="text-xs text-zinc-500">Format</UILabel>
               <Select

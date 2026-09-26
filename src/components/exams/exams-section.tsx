@@ -569,7 +569,7 @@ export function ExamsSection() {
                     slug + code + country are immutable identity (§37 stable identifiers).
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-3 sm:grid-cols-2">
+                <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <UILabel htmlFor="exam-name">Exam name</UILabel>
                     <Input
@@ -769,7 +769,7 @@ export function ExamsSection() {
                   <Separator />
 
                   {/* Metadata editor */}
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <UILabel htmlFor="edit-name">Name</UILabel>
                       <Input id="edit-name" value={name} onChange={(event) => setName(event.target.value)} disabled={!selected.canEdit} />
@@ -955,7 +955,7 @@ export function ExamsSection() {
               <Skeleton className="h-20 w-full" />
             </div>
           ) : publicResult && publicResult.exams.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {publicResult.exams.map((exam) => (
                 <Card key={exam.id} className="border-zinc-200 shadow-sm">
                   <CardHeader className="pb-2">

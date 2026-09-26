@@ -108,3 +108,50 @@ export const publicCoverageQuerySchema = z.object({
 })
 
 export type PublicCoverageQuery = z.infer<typeof publicCoverageQuerySchema>
+
+// ---------- §11 combined queue (P3-S4) ----------
+
+/** §11 step 1 input cap — a learner's realistic simultaneous exam set. */
+export const MAX_COMBINED_EXAMS = 8
+
+/** Exam reference — canonical slug or internal id (§37 stable identifiers). */
+const examRef = z
+  .string()
+  .trim()
+  .min(2, 'Exam reference is too short')
+  .max(170, 'Exam reference is too long')
+
+/** GET /api/exams/combined query — the explicit exam set (until P5-S1 wires
+ * follows, the client passes the set; single-exam mode is one ref, §11). */
+export const combinedQueueQuerySchema = z.object({
+  country: z.string().trim().min(2).max(8).optional(),
+  language: z.string().trim().min(2).max(8).optional(),
+  exams: z
+    .array(examRef)
+    .min(1, 'Pick at least one exam to combine')
+    .max(MAX_COMBINED_EXAMS, `Combine at most ${MAX_COMBINED_EXAMS} exams at once`),
+})
+
+export type CombinedQueueQuery = z.infer<typeof combinedQueueQuerySchema>
+
+/**
+ * Splits raw `?exams=` values (comma-separated and/or repeated parameters)
+ * into unique refs, preserving first occurrence. Case-insensitive dedup —
+ * slugs are stored lowercase and ids are lowercase cuids, so "UPSC-Civil-Services"
+ * and "upsc-civil-services" are the same exam (§11 step 1 collects a set).
+ */
+export function parseCombinedExamRefs(values: string[]): string[] {
+  const seen = new Set<string>()
+  const refs: string[] = []
+  for (const value of values) {
+    for (const raw of value.split(',')) {
+      const ref = raw.trim()
+      if (ref.length === 0) continue
+      const key = ref.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      refs.push(ref)
+    }
+  }
+  return refs
+}

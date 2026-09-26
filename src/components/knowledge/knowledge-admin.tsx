@@ -380,7 +380,7 @@ export function KnowledgeAdmin() {
             <Plus className="h-4 w-4 text-emerald-700" aria-hidden="true" />
             Create a knowledge unit (§7 canonical record — enters DRAFT)
           </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <UILabel htmlFor="ku-create-name" className="text-xs">Canonical name *</UILabel>
               <Input id="ku-create-name" value={createName} onChange={(e) => { setCreateName(e.target.value); if (!createSlug) setCreateSlug(slugify(e.target.value)) }} placeholder="e.g. Kesavananda Bharati Case — 1973" className="bg-white" />
@@ -576,7 +576,7 @@ export function KnowledgeAdmin() {
               )}
 
               {/* Fields */}
-              <div className="grid gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <div className="space-y-1.5">
                   <UILabel htmlFor="ku-edit-name" className="text-xs">Canonical name</UILabel>
                   <Input
@@ -599,7 +599,7 @@ export function KnowledgeAdmin() {
                     className="globiq-scroll min-h-32 bg-white text-xs leading-relaxed"
                   />
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="space-y-1.5">
                     <UILabel htmlFor="ku-edit-difficulty" className="text-xs">Difficulty</UILabel>
                     <Select

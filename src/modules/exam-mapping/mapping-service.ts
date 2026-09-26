@@ -175,7 +175,8 @@ function assertMappingsEditable(exam: { status: string }, version: { effectiveFr
 
 const CUID_PATTERN = /^c[a-z0-9]{20,}$/
 
-type MappingRow = ExamMapping & {
+/** Mapping row with the canonical unit context (shared with the §11 engine). */
+export type MappingRow = ExamMapping & {
   knowledgeUnit: {
     id: string
     slug: string
@@ -207,13 +208,15 @@ const MAPPING_INCLUDE = {
   },
 } as const
 
-type NodeRow = SyllabusNode & {
+/** Syllabus node row with its §13 topic link (shared with the §11 engine). */
+export type NodeRow = SyllabusNode & {
   topic: Pick<Topic, 'id' | 'slug' | 'canonicalName' | 'countryId' | 'scope'> | null
 }
 
 const NODE_ORDER = [{ priority: 'asc' } as const, { id: 'asc' } as const]
 
-async function loadVersionNodes(versionId: string): Promise<NodeRow[]> {
+/** Shared with the §11 combination engine (sibling file in this module). */
+export async function loadVersionNodes(versionId: string): Promise<NodeRow[]> {
   return db.syllabusNode.findMany({
     where: { examVersionId: versionId },
     include: { topic: { select: { id: true, slug: true, canonicalName: true, countryId: true, scope: true } } },
@@ -221,7 +224,8 @@ async function loadVersionNodes(versionId: string): Promise<NodeRow[]> {
   })
 }
 
-async function loadVersionMappings(versionId: string): Promise<MappingRow[]> {
+/** Shared with the §11 combination engine (sibling file in this module). */
+export async function loadVersionMappings(versionId: string): Promise<MappingRow[]> {
   return db.examMapping.findMany({
     where: { examVersionId: versionId },
     include: MAPPING_INCLUDE,
@@ -687,9 +691,10 @@ const DAY_MS = 24 * 60 * 60 * 1000
  * §8 effective_period, day-granular inclusive semantics (mirrors version
  * windows): null bounds = unbounded. `historical` mode keeps expired mappings
  * (§36 "old mappings remain historically queryable") and only hides
- * not-yet-valid ones.
+ * not-yet-valid ones. Shared with the §11 combination engine (the engine
+ * always reads CURRENT versions, so it passes historical=false).
  */
-function mappingInEffect(
+export function mappingInEffect(
   mapping: { effectiveFrom: Date | null; effectiveTo: Date | null },
   historical: boolean,
   now = Date.now()
@@ -698,6 +703,33 @@ function mappingInEffect(
   if (historical) return true
   if (mapping.effectiveTo == null) return true
   return now < mapping.effectiveTo.getTime() + DAY_MS
+}
+
+/**
+ * §35 topic labels resolved requested-language → country-default → canonical
+ * (the canonical fallback is applied by the caller). Shared with the §11
+ * combination engine (covering nodes carry the same label resolution).
+ */
+export async function resolveTopicLabels(
+  topicIds: string[],
+  languageCode: string,
+  defaultLanguageCode: string
+): Promise<Map<string, { label: string; language: string }>> {
+  const resolved = new Map<string, { label: string; language: string }>()
+  if (topicIds.length === 0) return resolved
+  const labels = await db.topicLabel.findMany({
+    where: {
+      topicId: { in: topicIds },
+      language: { code: { in: [languageCode, defaultLanguageCode] } },
+    },
+    select: { topicId: true, name: true, language: { select: { code: true } } },
+  })
+  for (const label of labels) {
+    if (label.language.code === languageCode || !resolved.has(label.topicId)) {
+      resolved.set(label.topicId, { label: label.name, language: label.language.code })
+    }
+  }
+  return resolved
 }
 
 /**
@@ -774,22 +806,12 @@ export async function getPublicExamCoverage(
 
   // §35 topic labels for the coverage nodes (requested → country default → canonical).
   const topicIds = [...new Set(nodes.map((node) => node.topicId).filter((id): id is string => id != null))]
+  const labels = await resolveTopicLabels(topicIds, languageCode, country.defaultLanguage.code)
   const labelByTopicId = new Map<string, string>()
   const labelLanguageByTopicId = new Map<string, string>()
-  if (topicIds.length > 0) {
-    const labels = await db.topicLabel.findMany({
-      where: {
-        topicId: { in: topicIds },
-        language: { code: { in: [languageCode, country.defaultLanguage.code] } },
-      },
-      select: { topicId: true, name: true, language: { select: { code: true } } },
-    })
-    for (const label of labels) {
-      if (label.language.code === languageCode || !labelByTopicId.has(label.topicId)) {
-        labelByTopicId.set(label.topicId, label.name)
-        labelLanguageByTopicId.set(label.topicId, label.language.code)
-      }
-    }
+  for (const [topicId, resolved] of labels) {
+    labelByTopicId.set(topicId, resolved.label)
+    labelLanguageByTopicId.set(topicId, resolved.language)
   }
 
   const mappingsByNode = new Map<string, MappingRow[]>()

@@ -1,13 +1,15 @@
 /**
- * GlobIQ — Exam Mapping module: public DTOs (P3-S3)
+ * GlobIQ — Exam Mapping module: public DTOs (P3-S3/P3-S4)
  * Master Plan §6 (ExamMapping row), §8 (the requirement layer: relevance,
  * priority, required_depth, expected_scope, question_likelihood, source_basis,
  * effective_period, notes), §11 (step 3: expand a version's tree into its
- * mapped canonical units — these shapes feed the P3-S4 engine), §13 (the only
+ * mapped canonical units; steps 4–9: the P3-S4 combined-exam union — max
+ * depth, covering-exam set, canonical dedup, ranked queue), §13 (the only
  * exam→knowledge path), §14 (unit scope: GLOBAL or the exam's country),
  * §16 (knowledge-page paths shipped as data), §35 (topic labels per language
  * on coverage nodes), §36 (version-pinned mappings; superseded = history),
- * §37 (client-agnostic shapes, no internal ids beyond console needs).
+ * §37 (client-agnostic shapes, no internal ids beyond console needs),
+ * §46.3 (a computed union, never a stored duplicate).
  */
 
 // ---------- §8 vocabulary (mirror of the Prisma enums — client-agnostic) ----------
@@ -186,4 +188,102 @@ export interface PublicExamCoverage {
   mappingCount: number
   nodes: PublicCoverageNode[]
   language: { code: string; name: string; nativeName: string | null }
+}
+
+// ---------- §11 combined-exam shapes (P3-S4; consumed by P3-S5 pages) ----------
+
+/** One exam's resolution inside a combined request (§11 steps 1–2). */
+export interface CombinedExamResolution {
+  exam: { id: string; slug: string; name: string; code: string; level: string }
+  /** The ACTIVE version (the §36 window containing now) — null when nothing
+   * is in effect yet, e.g. an exam whose versions are all still future. */
+  version: { id: string; label: string; effectiveFrom: string; effectiveTo: string | null } | null
+  /** Present when `version` is null — why this exam contributes nothing. */
+  note: string | null
+  /** Distinct units this exam contributed to the union. */
+  unitCount: number
+  /** Coverings this exam contributed (a unit may anchor at several nodes). */
+  mappingCount: number
+}
+
+/** One (exam × syllabus node) requirement row behind a united unit. */
+export interface CombinedCovering {
+  exam: { slug: string; name: string; code: string }
+  node: {
+    name: string
+    depth: number
+    /** §35 topic label resolved requested → country default → canonical. */
+    topic: { slug: string; canonicalName: string; label: string; labelLanguage: string } | null
+  }
+  requiredDepth: RequiredDepthPublic
+  priority: MappingPriorityPublic
+  relevance: MappingRelevancePublic
+  questionLikelihood: QuestionLikelihoodPublic
+  expectedScope: string | null
+  effectiveFrom: string | null
+  effectiveTo: string | null
+}
+
+/**
+ * A canonical unit in the combined learning queue — rendered ONCE with its
+ * covering exams (§11 steps 4–6 and 8–9; Appendix A's "deeper version once,
+ * badged with both exams"). `requiredDepth` is the MAXIMUM across coverings
+ * (§11 step 5); each covering keeps its own per-exam depth so the ladder
+ * stays visible.
+ */
+export interface CombinedQueueUnit {
+  unit: {
+    slug: string
+    canonicalName: string
+    canonicalSummary: string | null
+    type: string
+    difficulty: string
+  }
+  /** §16 knowledge-page path (…/gk/{topic}/{slug}/) in the resolved locale. */
+  canonicalPath: string
+  /** §11 step 5: the MAXIMUM required depth across covering exams. */
+  requiredDepth: RequiredDepthPublic
+  /** Strongest priority/likelihood across coverings — the §11 step 7 ranking
+   * inputs available before personalisation lands (P5) and mastery/revision
+   * signals arrive (P7). */
+  priority: MappingPriorityPublic
+  questionLikelihood: QuestionLikelihoodPublic
+  /** Distinct covering exams, in request order — the "Covers: Exam A + Exam B"
+   * badge input (§11 step 5/9; Appendix A's "Exam B only" is examCount 1). */
+  exams: Array<{ slug: string; name: string; code: string }>
+  examCount: number
+  isShared: boolean
+  /** One row per (exam × node) — the same unit may anchor at several nodes
+   * of one exam (e.g. Prelims polity and Mains Fundamental Rights). */
+  coverings: CombinedCovering[]
+  /** Most recent mapping effectiveFrom across coverings (§11 step 7 freshness). */
+  latestEffectiveFrom: string | null
+}
+
+/**
+ * GET /api/exams/combined — the §11 computed combined-exam view: the union
+ * queue across the requested exams. §46.3: a COMPUTED union, never a stored
+ * duplicate — nothing here persists; `computedAt` records the request time.
+ * Single-exam mode is the same shape with one exam in `exams` (§11).
+ */
+export interface CombinedExamView {
+  /** The resolved input set — order mirrors the request (refs deduplicated). */
+  exams: CombinedExamResolution[]
+  /** The union queue — every canonical unit ONCE (§11 steps 4–6, 8). */
+  units: CombinedQueueUnit[]
+  stats: {
+    /** Exams in the request set (after dedup). */
+    examCount: number
+    /** Distinct canonical units in the union (§11 step 4). */
+    unitCount: number
+    /** Total coverings across all exams (pre-dedup requirement rows). */
+    mappingCount: number
+    /** Units covered by two or more exams (the "Covers:" rows). */
+    sharedUnitCount: number
+    /** mappingCount − unitCount — requirement rows collapsed by canonical
+     * identity (§11 step 6: dedup strictly canonical, never by title). */
+    duplicatesAvoided: number
+  }
+  language: { code: string; name: string; nativeName: string | null }
+  computedAt: string
 }

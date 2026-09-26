@@ -212,7 +212,7 @@ export function KnowledgeExplorer({ country, language, topic, topics, onTopicCha
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="grid gap-3 sm:grid-cols-2 sm:max-w-md">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:max-w-md">
         <div className="space-y-1.5">
           <UILabel htmlFor="ku-type-filter" className="text-xs text-zinc-500">
             Type
