@@ -76,4 +76,6 @@ export const RATE_LIMITS = {
   sourceWrite: { limit: 30, windowMs: 60 * 1000 }, // source registry + link mutations per IP
   editorialRead: { limit: 60, windowMs: 60 * 1000 }, // editorial workspace reads per IP
   editorialWrite: { limit: 30, windowMs: 60 * 1000 }, // editorial task mutations per IP
+  examsRead: { limit: 60, windowMs: 60 * 1000 }, // public exam directory/detail per IP
+  examsWrite: { limit: 30, windowMs: 60 * 1000 }, // admin exam/version mutations per IP
 } as const

@@ -112,6 +112,15 @@ export const AUDIT_ACTIONS = {
   editorialTaskTransition: 'editorial.task.transition',
   /** Object-level editorial denials (scope/assignment mismatch — §20 signal). */
   editorialTaskDenied: 'editorial.task.denied',
+  /** P3-S1 exams (§6/§36 — every exam/version mutation is audited). */
+  examCreate: 'exam.create',
+  examUpdate: 'exam.update',
+  examTransition: 'exam.transition',
+  examVersionCreate: 'exam.version.create',
+  examVersionUpdate: 'exam.version.update',
+  examVersionRemove: 'exam.version.remove',
+  /** Object-level exam denials (country/scope mismatch — §20 signal). */
+  examDenied: 'exam.denied',
 } as const
 
 /** Object type vocabulary (§6 entities that exist so far). */
@@ -127,5 +136,7 @@ export const AUDIT_OBJECT_TYPES = {
   editorialTask: 'EditorialTask',
   source: 'Source',
   contentSourceLink: 'ContentSourceLink',
+  exam: 'Exam',
+  examVersion: 'ExamVersion',
   permission: 'Permission',
 } as const

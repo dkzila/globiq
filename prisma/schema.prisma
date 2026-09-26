@@ -6,12 +6,9 @@
 // foundation models: Language, Country, CountryLanguage, base User.
 //
 // Upcoming (do NOT add early — see Master Plan §41/§48 session protocol):
-//   P1-S2: auth/identity tables & user auth fields
-//   P1-S3: country/language configuration system (APIs/CRUD)
-//   P1-S4: Taxonomy (Topic tree)
-//   P1-S5: AuditLog + permission enforcement
-//   P2+:  KnowledgeUnit, ContentItem, Source, Exam, ExamVersion,
-//         SyllabusNode, ExamMapping, UserFollow, SavedItem, …
+//   P3-S2: SyllabusNode hierarchy
+//   P3-S3: ExamMapping
+//   P5+:   UserFollow, SavedItem, CurrentEvent, Question, MockTest, …
 // ============================================================
 
 generator client {
@@ -413,6 +410,85 @@ model EditorialTask {
   @@index([objectType, objectId, status])
 }
 
+// ---------- P3-S1: Exams & versions (Master Plan §6 Exam/ExamVersion rows, §8, §11, §14, §36) ----------
+
+// Exam lifecycle. An exam is a configuration object, not content: it does not
+// ride the §19 content review workflow — Country Admins provision it (§18
+// "Country Admin — country-specific content, exams…") and it becomes publicly
+// listed when ACTIVE. RETIRED is end-of-life (§36 migration-safe — no hard
+// deletes anywhere in the platform).
+enum ExamStatus {
+  DRAFT // configured, not yet public
+  ACTIVE // publicly listed exam (§38 public app)
+  INACTIVE // temporarily suspended/hidden, restorable
+  RETIRED // end-of-life, read-only (history preserved)
+}
+
+// §6 Exam row "level" — the exam's administrative tier within its country.
+enum ExamLevel {
+  NATIONAL // country-wide conducting body (UPSC CSE, SSC CGL)
+  STATE // state PSC / state recruitment boards
+  REGIONAL // regional/district-level recruitment
+}
+
+// §6 Exam row: "Country-specific exam definition — id, country_id, name, code,
+// organiser, level, status". Every exam belongs to EXACTLY ONE country (§14)
+// and reaches knowledge ONLY through SyllabusNode → ExamMapping (P3-S2/S3 —
+// §13 "exam names never enter the canonical taxonomy"). slug and code are
+// immutable identity after create (§16 URL-stable, §37 stable identifiers).
+model Exam {
+  id          String     @id @default(cuid())
+  slug        String     @unique // immutable, URL-stable (§16 /exams/{exam-slug}/)
+  code        String // short human code, e.g. "UPSC-CSE" — unique per country, immutable
+  name        String // canonical display name
+  organiser   String // §6 conducting body, e.g. "Union Public Service Commission"
+  level       ExamLevel @default(NATIONAL)
+  status      ExamStatus @default(DRAFT)
+  countryId   String // §14 — never null: an exam without a country cannot exist
+  description String? // public-facing summary (what the exam is, who runs it)
+  notes       String? // internal editorial notes
+  createdById String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  country  Country       @relation("ExamCountry", fields: [countryId], references: [id])
+  createdBy User?         @relation("ExamAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  versions ExamVersion[]
+
+  @@unique([countryId, code])
+  @@index([status])
+  @@index([countryId, status])
+  @@index([level])
+}
+
+// §6 ExamVersion row: "Versioned exam structure — id, exam_id, effective_from,
+// effective_to, source". §36: "Exam syllabus changes create a new ExamVersion.
+// Old mappings remain historically queryable." Windows are day-granular and
+// NON-OVERLAPPING: the CURRENT version is the one whose [effectiveFrom,
+// effectiveTo] window contains now (effectiveTo null = in effect until
+// superseded). Creating a version closes the open predecessor at
+// (newFrom − 1 day); windows are IMMUTABLE afterwards — history is append-only
+// (§36). This model is the anchor for SyllabusNode (P3-S2) and ExamMapping
+// (P3-S3), and the resolution point for the §11 combination engine's step 2
+// ("Resolve each exam to its active ExamVersion").
+model ExamVersion {
+  id            String   @id @default(cuid())
+  examId        String
+  label         String // human label, e.g. "2025 syllabus (2025 notification)"
+  effectiveFrom DateTime // inclusive first day (UTC midnight)
+  effectiveTo   DateTime? // inclusive last day; null = in effect until superseded
+  source        String? // §6 "source" — official notification/URL the structure came from
+  notes         String? // internal editorial notes
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  exam      Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("ExamVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([examId, effectiveFrom])
+}
+
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
 
 // Language is a first-class localisation dimension. `code` is the URL segment
@@ -463,6 +539,7 @@ model Country {
   topics          Topic[] // country-scoped taxonomy extension nodes (§13)
   knowledgeUnits  KnowledgeUnit[] @relation("KnowledgeUnitCountry")
   editorialTasks  EditorialTask[]
+  exams           Exam[] @relation("ExamCountry") // P3-S1: every exam belongs to exactly one country (§14)
 
   @@index([status])
 }
@@ -521,6 +598,8 @@ model User {
   assignedEditorialTasks EditorialTask[] @relation("EditorialTaskAssignee")
   createdEditorialTasks  EditorialTask[] @relation("EditorialTaskCreator")
   resolvedEditorialTasks EditorialTask[] @relation("EditorialTaskResolver")
+  createdExams           Exam[]        @relation("ExamAuthor") // P3-S1
+  createdExamVersions    ExamVersion[] @relation("ExamVersionAuthor") // P3-S1
 
   @@index([homeCountryId])
   @@index([preferredLanguageId])

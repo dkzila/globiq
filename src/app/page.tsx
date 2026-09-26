@@ -1,13 +1,14 @@
 'use client'
 
 /**
- * GlobIQ — Foundation Status Page (P1-S1 → P2-S5)
+ * GlobIQ — Foundation Status Page (P1-S1 → P3-S1)
  *
  * Temporary homepage: proves the foundation end-to-end (database, API-first
  * pattern, module registry, token-based identity, the canonical content
- * stack, and the §22 reading experience) until the real India discovery
- * homepage lands in P4-S2 (Master Plan §34). This page consumes the same
- * /api endpoints a future mobile client would use (§4, §39).
+ * stack, the §22 reading experience, and the country-scoped exam layer)
+ * until the real India discovery homepage lands in P4-S2 (Master Plan §34).
+ * This page consumes the same /api endpoints a future mobile client would
+ * use (§4, §39).
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -40,6 +41,7 @@ import { AccountSection } from '@/components/auth/account-section'
 import { HeaderAuth } from '@/components/auth/header-auth'
 import { AuditSection } from '@/components/audit/audit-section'
 import { ContentSection } from '@/components/content/content-section'
+import { ExamsSection } from '@/components/exams/exams-section'
 import { KnowledgeSection } from '@/components/knowledge/knowledge-section'
 import { LocaleSection } from '@/components/locale/locale-section'
 import { SourceSection } from '@/components/sources/source-section'
@@ -145,7 +147,7 @@ export default function FoundationStatusPage() {
               variant="outline"
               className="hidden shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 sm:inline-flex"
             >
-              Phase 2 · Session 5 — Canonical Reading
+              Phase 3 · Session 1 — Exams & Versions
             </Badge>
             <HeaderAuth />
           </div>
@@ -177,10 +179,9 @@ export default function FoundationStatusPage() {
             country/language configuration (P1-S3), canonical taxonomy (P1-S4), audit + permissions
             (P1-S5), the KnowledgeUnit canonical record (P2-S1), ContentItems with immutable
             published revisions (P2-S2), the §24 source &amp; provenance model (P2-S3), the §19
-            editorial workspace with writer/editor roles and scheduled publishing (P2-S4) — and now
-            the §22 reading experience: the canonical knowledge page assembled from one record into
-            quick fact, format-aware explanations, sources, related concepts and exam coverage
-            (P2-S5).
+            editorial workspace with writer/editor roles and scheduled publishing (P2-S4), the §22
+            reading experience (P2-S5) — and now the exam layer: country-scoped exam definitions
+            with §36 versioned structures (P3-S1), the anchor for syllabus trees and exam mappings.
           </p>
 
           {/* Live status pill */}
@@ -342,6 +343,9 @@ export default function FoundationStatusPage() {
         {/* ---------- Reader — canonical knowledge page (P2-S5) ---------- */}
         <ReaderSection />
 
+        {/* ---------- Exams & versions (P3-S1) ---------- */}
+        <ExamsSection />
+
         {/* ---------- Audit trail (P1-S5, ADMIN only) ---------- */}
         <AuditSection />
 
@@ -395,7 +399,7 @@ export default function FoundationStatusPage() {
           </div>
           <p className="text-sm text-zinc-600">
             One chat = one session (§41). Currently executing{' '}
-            <strong className="text-zinc-900">P2-S5 of 55 sessions</strong> in the vertical slice.
+            <strong className="text-zinc-900">P3-S1 of 55 sessions</strong> in the vertical slice.
           </p>
           <ol className="flex flex-wrap gap-2">
             {PHASES.map((phase) => (

@@ -26,6 +26,11 @@
  * AI-assisted DRAFT CURRENT_EVENT_UPDATE (§26 provenance flag + the
  * source-backed-update format the P2-S2 handoff called for).
  *
+ * P3-S1 scope: Exams + ExamVersions (§6/§14/§36) — India gets the full demo
+ * matrix (three ACTIVE + one DRAFT exam, NATIONAL/STATE levels, historical
+ * superseded + current + upcoming future-dated windows); UK (COMING_SOON)
+ * carries one DRAFT exam to exercise §14 country scoping.
+ *
  * Run: bun run db:seed
  */
 import { PrismaClient } from '@prisma/client'
@@ -1256,12 +1261,171 @@ async function main() {
     tasksSeeded += 1
   }
 
+  // ---------- P3-S1: Exams + versions (§45 structurally rich, §6/§14/§36) ----------
+  // India (ACTIVE) gets the full demo matrix: lifecycle statuses, levels
+  // (NATIONAL/STATE), version windows (historical superseded + current +
+  // upcoming future-dated), and one DRAFT exam with no versions yet. UK
+  // (COMING_SOON) carries one DRAFT exam to exercise §14 country scoping —
+  // it is invisible publicly and untouchable by the IN country admin.
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const jan1 = (y: number): Date => new Date(Date.UTC(y, 0, 1))
+  const dec31 = (y: number): Date => new Date(Date.UTC(y, 11, 31))
+
+  interface ExamSeed {
+    slug: string
+    code: string
+    name: string
+    organiser: string
+    level: 'NATIONAL' | 'STATE' | 'REGIONAL'
+    status: 'DRAFT' | 'ACTIVE' | 'INACTIVE' | 'RETIRED'
+    countryId: string
+    description: string
+    versions: Array<{
+      label: string
+      effectiveFrom: Date
+      effectiveTo?: Date | null
+      source: string
+      notes?: string
+    }>
+  }
+
+  const examSeeds: ExamSeed[] = [
+    {
+      slug: 'upsc-civil-services',
+      code: 'UPSC-CSE',
+      name: 'UPSC Civil Services Examination',
+      organiser: 'Union Public Service Commission',
+      level: 'NATIONAL',
+      status: 'ACTIVE',
+      countryId: india.id,
+      description:
+        'India\'s premier national recruitment examination for the Indian Administrative Service (IAS), Indian Foreign Service (IFS), Indian Police Service (IPS) and other Group A central services — Prelims, Mains and Personality Test.',
+      versions: [
+        {
+          label: `${year - 1} syllabus (superseded)`,
+          effectiveFrom: jan1(year - 1),
+          effectiveTo: new Date(Date.UTC(year, 5 - 1, 31)), // closed by the current version (§36 auto-close)
+          source: `UPSC ${year - 1} Examination Notification — https://upsc.gov.in`,
+          notes: 'Historical window preserved for old mappings (§36 old versions stay queryable).',
+        },
+        {
+          label: `${year} syllabus`,
+          effectiveFrom: new Date(Date.UTC(year, 5, 1)), // Jun 1 this year
+          effectiveTo: null,
+          source: `UPSC ${year} Examination Notification — https://upsc.gov.in`,
+        },
+      ],
+    },
+    {
+      slug: 'ssc-cgl',
+      code: 'SSC-CGL',
+      name: 'SSC Combined Graduate Level Examination',
+      organiser: 'Staff Selection Commission',
+      level: 'NATIONAL',
+      status: 'ACTIVE',
+      countryId: india.id,
+      description:
+        'Nationwide graduate-level recruitment examination for Group B and Group C posts in ministries, departments and organisations of the Government of India.',
+      versions: [
+        {
+          label: `${year} syllabus`,
+          effectiveFrom: jan1(year),
+          effectiveTo: dec31(year), // auto-closed by the upcoming version
+          source: `SSC ${year} Calendar & Notification — https://ssc.gov.in`,
+        },
+        {
+          label: `${year + 1} syllabus (upcoming)`,
+          effectiveFrom: jan1(year + 1),
+          effectiveTo: null,
+          source: `SSC ${year + 1} Examination Calendar — https://ssc.gov.in`,
+          notes: 'Future-dated: demonstrates the UPCOMING state and the pre-effective correction path.',
+        },
+      ],
+    },
+    {
+      slug: 'mp-police-constable',
+      code: 'MP-POLICE-CONSTABLE',
+      name: 'MP Police Constable Recruitment Examination',
+      organiser: 'Madhya Pradesh Employees Selection Board',
+      level: 'STATE',
+      status: 'ACTIVE',
+      countryId: india.id,
+      description:
+        'State-level police constable recruitment examination conducted by MP ESB (formerly Vyapam) for the Madhya Pradesh Police Department.',
+      versions: [
+        {
+          label: `${year - 1} recruitment syllabus`,
+          effectiveFrom: new Date(Date.UTC(year - 1, 6, 1)), // Jul 1 last year
+          effectiveTo: null,
+          source: `MP ESB Police Constable Recruitment Rules ${year - 1} — https://esb.mp.gov.in`,
+        },
+      ],
+    },
+    {
+      slug: 'upsc-engineering-services',
+      code: 'UPSC-ESE',
+      name: 'UPSC Engineering Services Examination',
+      organiser: 'Union Public Service Commission',
+      level: 'NATIONAL',
+      status: 'DRAFT',
+      countryId: india.id,
+      description:
+        'Recruitment examination for engineering services under the Government of India (preparation in progress — no syllabus version published yet).',
+      versions: [], // DRAFT demo: no version yet (P3-S2 attaches SyllabusNodes to versions)
+    },
+    {
+      slug: 'uk-civil-service-fast-stream',
+      code: 'UK-FAST-STREAM',
+      name: 'Civil Service Fast Stream',
+      organiser: 'Cabinet Office (UK Government)',
+      level: 'NATIONAL',
+      status: 'DRAFT',
+      countryId: uk.id,
+      description:
+        'UK graduate leadership development programme (market not launched yet — exercises §14 country scoping: invisible publicly, untouchable by IN staff).',
+      versions: [],
+    },
+  ]
+
+  let examsSeeded = 0
+  let examVersionsSeeded = 0
+  for (const seed of examSeeds) {
+    const existing = await prisma.exam.findUnique({ where: { slug: seed.slug }, select: { id: true } })
+    if (existing) continue
+    await prisma.exam.create({
+      data: {
+        slug: seed.slug,
+        code: seed.code,
+        name: seed.name,
+        organiser: seed.organiser,
+        level: seed.level,
+        status: seed.status,
+        countryId: seed.countryId,
+        description: seed.description,
+        createdById: admin.id,
+        versions: {
+          create: seed.versions.map((version) => ({
+            label: version.label,
+            effectiveFrom: version.effectiveFrom,
+            effectiveTo: version.effectiveTo ?? null,
+            source: version.source,
+            notes: version.notes ?? null,
+            createdById: admin.id,
+          })),
+        },
+      },
+    })
+    examsSeeded += 1
+    examVersionsSeeded += seed.versions.length
+  }
+
   console.log(
     `Seed complete → languages: ${[en.code, hi.code, fr.code].join(', ')} | countries: ${[
       `${india.isoCode} (default)`,
       `${uk.isoCode} (coming soon)`,
       `${france.isoCode} (coming soon)`,
-    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | dev writers: ${writerIn.email} + ${writerHi.email} (Hindi-scoped) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''}) | editorial tasks: ${tasksSeeded}`
+    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | dev writers: ${writerIn.email} + ${writerHi.email} (Hindi-scoped) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''}) | editorial tasks: ${tasksSeeded} | exams: ${examsSeeded} (${examVersionsSeeded} versions)`
   )
 }
 
