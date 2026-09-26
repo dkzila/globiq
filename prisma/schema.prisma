@@ -485,8 +485,41 @@ model ExamVersion {
 
   exam      Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
   createdBy User? @relation("ExamVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  syllabusNodes SyllabusNode[]
 
   @@index([examId, effectiveFrom])
+}
+
+// §6 SyllabusNode row: "Exam syllabus tree — id, exam_version_id, parent_id,
+// topic_id, depth, priority, notes". Nodes are pinned to exactly ONE
+// ExamVersion (§36: a syllabus change creates a NEW version — once a version's
+// window has started, its tree is history and never mutates; staging happens
+// on future-dated versions or DRAFT exams). `name` is the exam's own syllabus
+// label as printed in the official notification (§13: exam wording never
+// enters the canonical taxonomy); `topicId` is the OPTIONAL link to the
+// canonical Topic — the ONLY bridge between exam requirements and knowledge
+// (§13: exams reach knowledge exclusively through SyllabusNode →
+// ExamMapping, which lands in P3-S3 and anchors on these rows).
+model SyllabusNode {
+  id            String  @id @default(cuid())
+  examVersionId String
+  parentId      String? // null = root; must belong to the SAME exam version
+  name          String // exam-syllabus label (notification wording — never taxonomy, §13)
+  topicId       String? // canonical taxonomy link (GLOBAL or the exam's country — §13/§14)
+  depth         Int // 0 for roots; parent.depth + 1 (denormalised for reads)
+  priority      Int     @default(0) // sibling ordering (§6) — ascending within a parent
+  notes         String? // internal editorial notes
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  examVersion ExamVersion   @relation(fields: [examVersionId], references: [id], onDelete: Cascade)
+  parent      SyllabusNode?  @relation("SyllabusTree", fields: [parentId], references: [id])
+  children    SyllabusNode[] @relation("SyllabusTree")
+  topic       Topic?          @relation("SyllabusNodeTopic", fields: [topicId], references: [id])
+  // P3-S3: examMappings ExamMapping[]
+
+  @@index([examVersionId, parentId, priority])
+  @@index([topicId])
 }
 
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
@@ -653,6 +686,7 @@ model Topic {
   labels   TopicLabel[]
   aliases  TopicAlias[]
   knowledgeUnits KnowledgeUnit[] @relation("KnowledgeUnitTopic")
+  syllabusNodes  SyllabusNode[]  @relation("SyllabusNodeTopic")
 
   @@index([parentId, orderIndex])
   @@index([status])

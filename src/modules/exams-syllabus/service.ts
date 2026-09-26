@@ -83,6 +83,17 @@ export type ExamErrorCode =
   | 'VERSION_OVERLAP'
   | 'VERSION_ALREADY_EFFECTIVE'
   | 'VERSION_NOT_LATEST'
+  | 'VERSION_REFERENCED'
+  // P3-S2 syllabus-tree codes (§6/§13/§36)
+  | 'VERSION_FROZEN'
+  | 'VERSION_NOT_STARTED'
+  | 'NODE_NOT_FOUND'
+  | 'PARENT_INVALID'
+  | 'INVALID_MOVE'
+  | 'NODE_HAS_CHILDREN'
+  | 'TOPIC_NOT_FOUND'
+  | 'TOPIC_COUNTRY_MISMATCH'
+  | 'OUTLINE_INVALID'
 
 const ERROR_STATUS: Record<ExamErrorCode, number> = {
   EXAM_NOT_FOUND: 404,
@@ -98,6 +109,16 @@ const ERROR_STATUS: Record<ExamErrorCode, number> = {
   VERSION_OVERLAP: 409,
   VERSION_ALREADY_EFFECTIVE: 409,
   VERSION_NOT_LATEST: 409,
+  VERSION_REFERENCED: 409,
+  VERSION_FROZEN: 409,
+  VERSION_NOT_STARTED: 404,
+  NODE_NOT_FOUND: 404,
+  PARENT_INVALID: 400,
+  INVALID_MOVE: 409,
+  NODE_HAS_CHILDREN: 409,
+  TOPIC_NOT_FOUND: 404,
+  TOPIC_COUNTRY_MISMATCH: 400,
+  OUTLINE_INVALID: 400,
 }
 
 export class ExamError extends Error {
@@ -136,7 +157,7 @@ function addDays(date: Date, days: number): Date {
 }
 
 /** True when the window [from, to|null] contains `now` (inclusive ends). */
-function windowContains(
+export function windowContains(
   version: { effectiveFrom: Date; effectiveTo: Date | null },
   now = Date.now()
 ): boolean {
@@ -164,12 +185,13 @@ function windowsOverlap(
 
 const CUID_PATTERN = /^c[a-z0-9]{20,}$/
 
-type ExamRow = Exam & { versions: ExamVersion[] }
+export type VersionWithCount = ExamVersion & { _count: { syllabusNodes: number } }
+export type ExamRow = Exam & { versions: VersionWithCount[] }
 
-async function findExam(ref: string): Promise<ExamRow | null> {
+export async function findExam(ref: string): Promise<ExamRow | null> {
   return db.exam.findFirst({
     where: CUID_PATTERN.test(ref) ? { id: ref } : { slug: ref.toLowerCase() },
-    include: { versions: true },
+    include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
   })
 }
 
@@ -199,7 +221,7 @@ function versionSnapshot(version: ExamVersion) {
   }
 }
 
-function toVersionRef(version: ExamVersion): ExamVersionRef {
+export function toVersionRef(version: VersionWithCount): ExamVersionRef {
   return {
     id: version.id,
     label: version.label,
@@ -209,13 +231,14 @@ function toVersionRef(version: ExamVersion): ExamVersionRef {
     notes: version.notes,
     isCurrent: windowContains(version),
     isUpcoming: version.effectiveFrom.getTime() > Date.now(),
+    nodeCount: version._count.syllabusNodes,
     createdAt: version.createdAt.toISOString(),
     updatedAt: version.updatedAt.toISOString(),
   }
 }
 
 /** The §11 "active ExamVersion" — the window containing now, if any. */
-function currentVersionOf(versions: ExamVersion[]) {
+export function currentVersionOf(versions: VersionWithCount[]) {
   const current = versions.find((version) => windowContains(version)) ?? null
   if (!current) return null
   return {
@@ -227,7 +250,7 @@ function currentVersionOf(versions: ExamVersion[]) {
 }
 
 /** Sorted newest-effective-first (deterministic §37; history reads top-down). */
-function sortedVersions(versions: ExamVersion[]): ExamVersion[] {
+function sortedVersions(versions: VersionWithCount[]): VersionWithCount[] {
   return [...versions].sort(
     (a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime() || a.id.localeCompare(b.id)
   )
@@ -248,7 +271,7 @@ function examPath(
 }
 
 /** Object-level permission check + denial audit (§20 signal). */
-function assertCanManageExam(actor: Actor, exam: Exam, operation: string, meta?: AuditRequestMeta): void {
+export function assertCanManageExam(actor: Actor, exam: Exam, operation: string, meta?: AuditRequestMeta): void {
   if (can(actor, 'exam:manage', { countryId: exam.countryId })) return
   void recordAudit({
     actor: { userId: actor.userId, email: actor.email, role: actor.role },
@@ -274,7 +297,7 @@ function assertCanManageExam(actor: Actor, exam: Exam, operation: string, meta?:
  * public reads. Unknown/inactive countries surface as clean 404s (§37) —
  * LocaleError never leaks as a 500.
  */
-async function resolvePublicContext(input: { country?: string; language?: string }): Promise<{
+export async function resolvePublicContext(input: { country?: string; language?: string }): Promise<{
   countryRow: { id: string; isoCode: string }
   country: PublicCountry
   languageCode: string
@@ -381,7 +404,7 @@ export async function getPublicExams(query: PublicExamListQuery): Promise<Public
       orderBy: [{ name: 'asc' }, { id: 'asc' }], // deterministic (§37)
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
-      include: { versions: true },
+      include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
     }),
     db.exam.count({ where }),
   ])
@@ -474,7 +497,7 @@ export async function getAdminExams(
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], // deterministic (§37)
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
-      include: { versions: true },
+      include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
     }),
     db.exam.count({ where }),
   ])
@@ -560,7 +583,7 @@ export async function createExam(
       notes: input.notes ?? null,
       createdById: actor.userId,
     },
-    include: { versions: true },
+    include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
   })
 
   await recordAudit({
@@ -603,7 +626,7 @@ export async function updateExam(
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
     },
-    include: { versions: true },
+    include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
   })
 
   await recordAudit({
@@ -646,7 +669,7 @@ export async function transitionExam(
   const updated = await db.exam.update({
     where: { id: exam.id },
     data: { status: to },
-    include: { versions: true },
+    include: { versions: { include: { _count: { select: { syllabusNodes: true } } } } },
   })
 
   await recordAudit({
@@ -832,8 +855,16 @@ export async function removeExamVersion(
   if (!latest || latest.id !== version.id) {
     throw new ExamError('VERSION_NOT_LATEST', 'Only the latest version can be removed as a correction')
   }
-  // P3-S2/S3 note: extend this guard with SyllabusNode/ExamMapping reference
-  // counts once those models exist — a referenced version is history.
+  // P3-S2 guard: a version carrying SyllabusNodes is referenced — it has
+  // staged/historical syllabus structure and is therefore history (§36). The
+  // pre-effective correction path only exists for unreferenced versions.
+  const nodeCount = await db.syllabusNode.count({ where: { examVersionId: version.id } })
+  if (nodeCount > 0) {
+    throw new ExamError(
+      'VERSION_REFERENCED',
+      `This version carries ${nodeCount} syllabus node${nodeCount === 1 ? '' : 's'} — clear its tree first (a referenced version is §36 history)`
+    )
+  }
 
   // Reopen the predecessor this version had auto-closed (deterministic: the
   // one whose effectiveTo is exactly newFrom − 1 day).

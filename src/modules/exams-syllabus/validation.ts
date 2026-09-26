@@ -121,3 +121,49 @@ export const adminExamListQuerySchema = z.object({
 })
 
 export type AdminExamListQuery = z.infer<typeof adminExamListQuerySchema>
+
+// ---------- P3-S2: SyllabusNode validation (§6, §13, §36) ----------
+
+export const createSyllabusNodeSchema = z.object({
+  name: z.string().trim().min(2, 'Node name must be at least 2 characters').max(200),
+  /** Parent within the SAME version (service checks); null/omitted = root. */
+  parentId: z.string().trim().min(5).optional().nullable(),
+  /** Canonical taxonomy link (§13): GLOBAL or the exam's country (service checks). */
+  topicId: z.string().trim().min(5).optional().nullable(),
+  priority: z.coerce.number().int().min(0).max(9999).optional(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+})
+
+export type CreateSyllabusNodeInput = z.infer<typeof createSyllabusNodeSchema>
+
+/** Update/move: every field optional — parentId carries the move (cycle guard in service). */
+export const updateSyllabusNodeSchema = z.object({
+  name: z.string().trim().min(2).max(200).optional(),
+  parentId: z.string().trim().min(5).optional().nullable(),
+  topicId: z.string().trim().min(5).optional().nullable(),
+  priority: z.coerce.number().int().min(0).max(9999).optional(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+})
+
+export type UpdateSyllabusNodeInput = z.infer<typeof updateSyllabusNodeSchema>
+
+/**
+ * Bulk outline import — the primary staging path. Indented plain text where
+ * indentation = tree depth (2 spaces OR 1 tab per level); blank lines and
+ * lines starting with "#" are ignored. An EMPTY outline clears the staged
+ * tree (staging only — §36 frozen versions refuse the call entirely).
+ */
+export const importSyllabusOutlineSchema = z.object({
+  outline: z.string().max(200_000),
+})
+
+export type ImportSyllabusOutlineInput = z.infer<typeof importSyllabusOutlineSchema>
+
+/** Public syllabus read: current version by default, or an explicit started one. */
+export const publicSyllabusQuerySchema = z.object({
+  country: z.string().trim().min(2).max(8).optional(),
+  language: z.string().trim().min(2).max(8).optional(),
+  version: z.string().trim().min(5).optional(),
+})
+
+export type PublicSyllabusQuery = z.infer<typeof publicSyllabusQuerySchema>

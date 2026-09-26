@@ -56,6 +56,8 @@ export interface ExamVersionRef {
   isCurrent: boolean
   /** True when effectiveFrom is still in the future (not yet in effect). */
   isUpcoming: boolean
+  /** Syllabus nodes pinned to this version (§6 — P3-S2 trees). */
+  nodeCount: number
   createdAt: string
   updatedAt: string
 }
@@ -118,4 +120,74 @@ export interface AdminExamDetail extends AdminExam {
 export interface AdminExamListResult {
   exams: AdminExam[]
   pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+
+// ---------- P3-S2: SyllabusNode trees (§6, §13, §16, §36) ----------
+
+/**
+ * Tree editability (§36): a version's syllabus tree is staging until the
+ * version enters history — then it never mutates again.
+ * - `staged`: DRAFT exam (private provisioning) or a future-dated version.
+ * - `frozen`: the version's window has started on a non-DRAFT exam — §36 history.
+ * - `locked`: RETIRED exam — everything read-only.
+ */
+export type SyllabusEditability = 'staged' | 'frozen' | 'locked'
+
+/** A syllabus node on the PUBLIC tree (§38 — no ids leaked beyond what the
+ * client needs; topic link resolved in the requested language §35). */
+export interface PublicSyllabusNode {
+  name: string
+  depth: number
+  priority: number
+  notes: string | null
+  /** Canonical taxonomy link (§13) — resolved label + canonical name. */
+  topic: { slug: string; canonicalName: string; label: string; labelLanguage: string } | null
+  /** §16 syllabus-topic path in the resolved locale context (topic-linked nodes only). */
+  canonicalPath: string | null
+  children: PublicSyllabusNode[]
+}
+
+export interface PublicExamSyllabus {
+  exam: { id: string; slug: string; name: string; code: string; level: ExamLevelPublic }
+  /** The version whose tree is returned — current by default (§11 step 2),
+   * or an explicitly requested STARTED version (§36 historical query). */
+  version: { id: string; label: string; effectiveFrom: string; effectiveTo: string | null; isCurrent: boolean } | null
+  editability: SyllabusEditability
+  nodeCount: number
+  nodes: PublicSyllabusNode[]
+  language: { code: string; name: string; nativeName: string | null }
+}
+
+/** Admin-facing node (console needs ids, parentId and topic ids for editing). */
+export interface AdminSyllabusNode {
+  id: string
+  parentId: string | null
+  name: string
+  topicId: string | null
+  topic: { slug: string; canonicalName: string } | null
+  depth: number
+  priority: number
+  notes: string | null
+  childCount: number
+  children: AdminSyllabusNode[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminVersionTree {
+  exam: {
+    id: string
+    slug: string
+    name: string
+    code: string
+    status: ExamStatusPublic
+    countryIso: string
+    countryName: string
+  }
+  version: ExamVersionRef
+  /** Whether this tree may be edited right now (§36) + why. */
+  editability: SyllabusEditability
+  editabilityReason: string
+  nodeCount: number
+  tree: AdminSyllabusNode[]
 }

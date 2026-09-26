@@ -1420,12 +1420,156 @@ async function main() {
     examVersionsSeeded += seed.versions.length
   }
 
+  // ---------- P3-S2: SyllabusNode trees (Master Plan §6, §13, §45) ----------
+  // §45: "Sample exams with versioned syllabus nodes (at least two exams
+  // sharing overlapping syllabus, to exercise the combination engine)" — the
+  // trees below deliberately link the SAME canonical topics (constitutional-
+  // framework, current-affairs, history, science-technology) across UPSC CSE,
+  // SSC CGL and MP Police Constable, so P3-S3 mappings and the §11 union
+  // engine have real overlap to deduplicate. Trees are pinned to their
+  // version (§36): the seeded current versions are already in effect → their
+  // trees are frozen history; the SSC upcoming version stays empty staging.
+  interface SyllabusSeedNode {
+    name: string
+    topic?: string // canonical taxonomy slug (§13 — the only exam→taxonomy bridge)
+    children?: SyllabusSeedNode[]
+  }
+
+  const syllabusSeeds: Array<{ examSlug: string; versionLabel: string; nodes: SyllabusSeedNode[] }> = [
+    {
+      examSlug: 'upsc-civil-services',
+      versionLabel: `${year} syllabus`,
+      nodes: [
+        {
+          name: 'Prelims — Paper I (General Studies)',
+          children: [
+            { name: 'Current events of national and international importance', topic: 'current-affairs' },
+            { name: 'History of India and Indian National Movement', topic: 'history' },
+            { name: 'Indian and World Geography — physical, social, economic' },
+            { name: 'Indian Polity and Governance — Constitution, political system, rights issues', topic: 'constitutional-framework' },
+            { name: 'General Science', topic: 'science-technology' },
+          ],
+        },
+        {
+          name: 'Prelims — Paper II (CSAT)',
+          children: [
+            { name: 'Comprehension' },
+            { name: 'Logical reasoning and analytical ability' },
+            { name: 'Decision-making and problem-solving' },
+          ],
+        },
+        {
+          name: 'Mains — GS Paper II (Governance, Constitution, Polity, Social Justice, IR)',
+          children: [
+            { name: 'Indian Constitution — historical underpinnings, evolution and features', topic: 'constitutional-framework' },
+            { name: 'Fundamental Rights and Fundamental Duties', topic: 'fundamental-rights' },
+            { name: 'India and its neighbourhood — relations' },
+            { name: 'Important international institutions and agencies', topic: 'international-organisations' },
+          ],
+        },
+      ],
+    },
+    {
+      // §36 historical tree: the superseded window keeps its own structure
+      // queryable (old mappings remain historically readable).
+      examSlug: 'upsc-civil-services',
+      versionLabel: `${year - 1} syllabus (superseded)`,
+      nodes: [
+        {
+          name: 'Prelims — Paper I (General Studies)',
+          children: [
+            { name: 'Current events of national and international importance', topic: 'current-affairs' },
+            { name: 'Indian Polity and Governance', topic: 'constitutional-framework' },
+          ],
+        },
+        {
+          name: 'Prelims — Paper II (CSAT)',
+          children: [{ name: 'Comprehension' }, { name: 'Interpersonal skills including communication' }],
+        },
+      ],
+    },
+    {
+      examSlug: 'ssc-cgl',
+      versionLabel: `${year} syllabus`,
+      nodes: [
+        { name: 'Tier-I — General Intelligence and Reasoning' },
+        {
+          name: 'Tier-I — General Awareness',
+          children: [
+            { name: 'Indian Polity and Constitution', topic: 'constitutional-framework' },
+            { name: 'History of India', topic: 'history' },
+            { name: 'Current affairs', topic: 'current-affairs' },
+          ],
+        },
+        { name: 'Tier-I — Quantitative Aptitude' },
+        { name: 'Tier-I — English Comprehension' },
+      ],
+    },
+    {
+      examSlug: 'mp-police-constable',
+      versionLabel: `${year - 1} recruitment syllabus`,
+      nodes: [
+        {
+          name: 'Part A — General Knowledge and Current Affairs',
+          children: [
+            { name: 'Indian Constitution', topic: 'constitutional-framework' },
+            { name: 'Current affairs', topic: 'current-affairs' },
+            { name: 'General Science', topic: 'science-technology' },
+          ],
+        },
+        { name: 'Part B — Intellectual Ability and Mental Ability' },
+        { name: 'Part C — Simple Arithmetic' },
+      ],
+    },
+  ]
+
+  let syllabusNodesSeeded = 0
+  for (const seed of syllabusSeeds) {
+    const exam = await prisma.exam.findUnique({
+      where: { slug: seed.examSlug },
+      include: { versions: true },
+    })
+    if (!exam) continue
+    const version = exam.versions.find((row) => row.label === seed.versionLabel)
+    if (!version) continue
+    // Idempotent: never re-seed over a live admin-edited tree (§36 spirit).
+    const existing = await prisma.syllabusNode.count({ where: { examVersionId: version.id } })
+    if (existing > 0) continue
+
+    const createNodes = async (
+      nodes: SyllabusSeedNode[],
+      parentId: string | null,
+      depth: number
+    ): Promise<number> => {
+      let created = 0
+      for (let index = 0; index < nodes.length; index++) {
+        const node = nodes[index]
+        const row = await prisma.syllabusNode.create({
+          data: {
+            examVersionId: version.id,
+            parentId,
+            name: node.name,
+            topicId: node.topic ? (topicIdBySlug.get(node.topic) ?? null) : null,
+            depth,
+            priority: index,
+          },
+        })
+        created += 1
+        if (node.children?.length) {
+          created += await createNodes(node.children, row.id, depth + 1)
+        }
+      }
+      return created
+    }
+    syllabusNodesSeeded += await createNodes(seed.nodes, null, 0)
+  }
+
   console.log(
     `Seed complete → languages: ${[en.code, hi.code, fr.code].join(', ')} | countries: ${[
       `${india.isoCode} (default)`,
       `${uk.isoCode} (coming soon)`,
       `${france.isoCode} (coming soon)`,
-    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | dev writers: ${writerIn.email} + ${writerHi.email} (Hindi-scoped) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''}) | editorial tasks: ${tasksSeeded} | exams: ${examsSeeded} (${examVersionsSeeded} versions)`
+    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | dev writers: ${writerIn.email} + ${writerHi.email} (Hindi-scoped) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''}) | editorial tasks: ${tasksSeeded} | exams: ${examsSeeded} (${examVersionsSeeded} versions${syllabusNodesSeeded > 0 ? `, ${syllabusNodesSeeded} syllabus nodes` : ''})`
   )
 }
 
