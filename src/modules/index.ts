@@ -23,7 +23,7 @@ export interface ModuleDescriptor {
 
 export const MODULES: ModuleDescriptor[] = [
   { key: 'identity-access', name: 'Identity & Access', description: 'Token-based authentication, users, roles, sessions', phase: 'P1', session: 'P1-S2', status: 'delivered' },
-  { key: 'country-locale', name: 'Country & Locale', description: 'Country/language configuration, routing context, server-side scoping', phase: 'P1', session: 'P1-S3', status: 'in_progress' },
+  { key: 'country-locale', name: 'Country & Locale', description: 'Country/language configuration, routing context, server-side scoping', phase: 'P1', session: 'P1-S3', status: 'delivered' },
   { key: 'taxonomy', name: 'Taxonomy', description: 'Canonical topic taxonomy with country extensions', phase: 'P1', session: 'P1-S4', status: 'planned' },
   { key: 'audit', name: 'Audit', description: 'Audit logging for privileged operations', phase: 'P1', session: 'P1-S5', status: 'planned' },
   { key: 'knowledge', name: 'Knowledge', description: 'KnowledgeUnit canonical model, ContentItems, Source provenance', phase: 'P2', session: 'P2-S1…S3', status: 'planned' },

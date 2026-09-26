@@ -4,6 +4,10 @@
  */
 import { z } from 'zod'
 
+import { fieldErrors } from '@/lib/validation'
+
+export { fieldErrors }
+
 export const emailSchema = z
   .string()
   .trim()
@@ -39,13 +43,3 @@ export const loginSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>
-
-/** Flattens zod issues into `{ field: message }` for the API error envelope. */
-export function fieldErrors(error: z.ZodError): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const issue of error.issues) {
-    const key = issue.path.join('.') || '_'
-    if (!(key in out)) out[key] = issue.message
-  }
-  return out
-}

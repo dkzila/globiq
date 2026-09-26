@@ -21,9 +21,7 @@ import {
   Database,
   GitBranch,
   Globe,
-  Languages,
   Layers,
-  MapPin,
   RefreshCw,
   Server,
   XCircle,
@@ -39,6 +37,7 @@ import { PHASES } from '@/config/roadmap'
 import { MODULES } from '@/modules'
 import { AccountSection } from '@/components/auth/account-section'
 import { HeaderAuth } from '@/components/auth/header-auth'
+import { LocaleSection } from '@/components/locale/locale-section'
 
 // ---------- Types (mirrors /api/health contract) ----------
 
@@ -68,17 +67,6 @@ interface HealthData {
 }
 
 // ---------- Helpers ----------
-
-/** URL examples per Master Plan §16 / Appendix B. */
-function countryUrlExamples(country: SeedCountry): string[] {
-  if (country.isDefault) {
-    const alternates = country.languages.filter((code) => code !== country.defaultLanguage)
-    return ['/', ...alternates.map((code) => `/${code}/`)]
-  }
-  return [`/${country.slug}/`, ...country.languages
-    .filter((code) => code !== country.defaultLanguage)
-    .map((code) => `/${country.slug}/${code}/`)]
-}
 
 const statusStyles: Record<string, string> = {
   done: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -146,7 +134,7 @@ export default function FoundationStatusPage() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700">
-              Phase 1 · Session 2 — Identity
+              Phase 1 · Session 3 — Countries &amp; Locales
             </Badge>
             <HeaderAuth />
           </div>
@@ -175,7 +163,8 @@ export default function FoundationStatusPage() {
           </h1>
           <p className="max-w-2xl text-base text-zinc-600 sm:text-lg">
             {PLATFORM.description} This page verifies the running foundation: database, APIs, module
-            architecture, CI — and now token-based identity (P1-S2): sign in, sessions, revocation.
+            architecture, CI, token-based identity (P1-S2) — and now the country/language
+            configuration system with canonical URL resolution (P1-S3).
           </p>
 
           {/* Live status pill */}
@@ -316,89 +305,8 @@ export default function FoundationStatusPage() {
         {/* ---------- Account (P1-S2: token-based identity) ---------- */}
         <AccountSection />
 
-        {/* ---------- Seeded countries ---------- */}
-        <section aria-labelledby="countries-heading" className="mt-10 space-y-4">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-5 w-5 text-emerald-600" aria-hidden="true" />
-            <h2 id="countries-heading" className="text-xl font-semibold tracking-tight">
-              Country &amp; language configuration
-            </h2>
-          </div>
-          <p className="text-sm text-zinc-600">
-            Country is a first-class, server-side scope (§14–§15). India is the default root market —
-            English default, no <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">/in</code> or{' '}
-            <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs">/en</code> in URLs (§16).
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {(health?.seed.countries ?? []).map((country) => (
-              <motion.div
-                key={country.isoCode}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Card className="h-full border-zinc-200 shadow-sm">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base">{country.name}</CardTitle>
-                      {country.status === 'ACTIVE' ? (
-                        <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Active</Badge>
-                      ) : (
-                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
-                          Coming soon
-                        </Badge>
-                      )}
-                    </div>
-                    <CardDescription className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <span className="font-mono text-xs">{country.isoCode}</span>
-                      <Separator orientation="vertical" className="h-3" />
-                      {country.timezone && <span className="text-xs">{country.timezone}</span>}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {country.isDefault && (
-                      <p className="text-xs font-medium text-emerald-700">Default root market</p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Languages className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
-                      {country.languages.map((code) => (
-                        <Badge
-                          key={code}
-                          variant={code === country.defaultLanguage ? 'default' : 'outline'}
-                          className={
-                            code === country.defaultLanguage
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-600'
-                              : 'font-normal'
-                          }
-                        >
-                          {code}
-                          {code === country.defaultLanguage ? ' · default' : ''}
-                        </Badge>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {countryUrlExamples(country).map((url) => (
-                        <code
-                          key={url}
-                          className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600"
-                        >
-                          {url}
-                        </code>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-            {loading && !health && (
-              <>
-                <Skeleton className="h-48 rounded-xl" />
-                <Skeleton className="h-48 rounded-xl" />
-                <Skeleton className="h-48 rounded-xl" />
-              </>
-            )}
-          </div>
-        </section>
+        {/* ---------- Country & language configuration (P1-S3) ---------- */}
+        <LocaleSection />
 
         {/* ---------- Module map ---------- */}
         <section aria-labelledby="modules-heading" className="mt-10 space-y-4">
@@ -450,7 +358,7 @@ export default function FoundationStatusPage() {
           </div>
           <p className="text-sm text-zinc-600">
             One chat = one session (§41). Currently executing{' '}
-            <strong className="text-zinc-900">P1-S2 of 55 sessions</strong> in the vertical slice.
+            <strong className="text-zinc-900">P1-S3 of 55 sessions</strong> in the vertical slice.
           </p>
           <ol className="flex flex-wrap gap-2">
             {PHASES.map((phase) => (

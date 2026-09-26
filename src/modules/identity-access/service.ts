@@ -9,6 +9,11 @@
  */
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
+import {
+  findActiveCountryByIso,
+  findActiveLanguageByCode,
+  isLanguageConfiguredForCountry,
+} from '@/modules/country-locale'
 
 import { hashPassword, verifyPassword } from './password'
 import { generateToken, hashToken, sessionExpiry } from './token'
@@ -114,12 +119,13 @@ export async function registerUser(
     throw new AuthError('EMAIL_TAKEN', 'An account with this email already exists')
   }
 
-  // Optional scoping dimensions (§14): resolved & validated server-side.
+  // Optional scoping dimensions (§14): resolved & validated server-side via
+  // the country-locale module (single source of locale truth since P1-S3).
   let homeCountryId: string | undefined
   if (input.homeCountryIso) {
     const iso = input.homeCountryIso.toUpperCase()
-    const country = await db.country.findUnique({ where: { isoCode: iso } })
-    if (!country || country.status !== 'ACTIVE') {
+    const country = await findActiveCountryByIso(iso)
+    if (!country) {
       throw new AuthError('INVALID_COUNTRY', `Country "${iso}" is not available on GlobIQ yet`)
     }
     homeCountryId = country.id
@@ -128,23 +134,18 @@ export async function registerUser(
   let preferredLanguageId: string | undefined
   if (input.preferredLanguageCode) {
     const code = input.preferredLanguageCode.toLowerCase()
-    const language = await db.language.findUnique({ where: { code } })
-    if (!language || language.status !== 'ACTIVE') {
+    const language = await findActiveLanguageByCode(code)
+    if (!language) {
       throw new AuthError('INVALID_LANGUAGE', `Language "${code}" is not available`)
     }
     preferredLanguageId = language.id
 
     // §35: languages are configured per country — never a global free-for-all.
-    if (homeCountryId) {
-      const link = await db.countryLanguage.findUnique({
-        where: { countryId_languageId: { countryId: homeCountryId, languageId: language.id } },
-      })
-      if (!link) {
-        throw new AuthError(
-          'LANGUAGE_NOT_AVAILABLE_IN_COUNTRY',
-          `Language "${code}" is not available in the selected country`
-        )
-      }
+    if (homeCountryId && !(await isLanguageConfiguredForCountry(homeCountryId, language.id))) {
+      throw new AuthError(
+        'LANGUAGE_NOT_AVAILABLE_IN_COUNTRY',
+        `Language "${code}" is not available in the selected country`
+      )
     }
   }
 
