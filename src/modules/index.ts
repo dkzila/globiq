@@ -26,7 +26,7 @@ export const MODULES: ModuleDescriptor[] = [
   { key: 'country-locale', name: 'Country & Locale', description: 'Country/language configuration, routing context, server-side scoping', phase: 'P1', session: 'P1-S3', status: 'delivered' },
   { key: 'taxonomy', name: 'Taxonomy', description: 'Canonical topic taxonomy with country extensions', phase: 'P1', session: 'P1-S4', status: 'delivered' },
   { key: 'audit', name: 'Audit', description: 'Audit logging for privileged operations', phase: 'P1', session: 'P1-S5', status: 'delivered' },
-  { key: 'knowledge', name: 'Knowledge', description: 'KnowledgeUnit canonical model, ContentItems, Source provenance', phase: 'P2', session: 'P2-S1…S3', status: 'delivered' },
+  { key: 'knowledge', name: 'Knowledge', description: 'KnowledgeUnit canonical model, ContentItems, Source provenance, §22 knowledge-page rendering', phase: 'P2', session: 'P2-S1…S5', status: 'delivered' },
   { key: 'editorial', name: 'Editorial', description: 'Editorial workspace, workflow, scoped roles', phase: 'P2', session: 'P2-S4', status: 'delivered' },
   { key: 'exams-syllabus', name: 'Exams & Syllabus', description: 'Country-specific exams, versioned syllabus trees', phase: 'P3', session: 'P3-S1…S2', status: 'planned' },
   { key: 'exam-mapping', name: 'Exam Mapping', description: 'Knowledge↔exam mappings, multi-exam union & deduplication engine', phase: 'P3', session: 'P3-S3…S5', status: 'planned' },

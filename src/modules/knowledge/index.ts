@@ -1,5 +1,5 @@
 /**
- * GlobIQ — Knowledge module (Master Plan §28, §43 P2-S1…S3)
+ * GlobIQ — Knowledge module (Master Plan §28, §43 P2-S1…S5)
  *
  * Public interface. Other modules and route handlers import from here only.
  * Internal files may change without notice (modular monolith rule, §28).
@@ -10,6 +10,9 @@
  * P2-S3: Source & provenance — the §24 trust model: evidence records with an
  *        editor verification workflow, claim/content-level citation links on
  *        content objects, and AI-provenance flags (§26).
+ * P2-S5: Canonical rendering — the §22 knowledge-page assembly (quick fact,
+ *        deeper explanation, related concepts, sources, exam coverage) with
+ *        §16 canonical paths and §35 translation surfaces.
  */
 export {
   KnowledgeError,
@@ -153,3 +156,19 @@ export {
   SOURCE_VERIFICATIONS,
   SOURCE_VERIFICATION_TRANSITIONS,
 } from './source-types'
+
+// ---------- P2-S5: Canonical reading page (§22) ----------
+export { getKnowledgePage } from './render-service'
+export { PAGE_FORMAT_ORDER } from './render-types'
+export type {
+  ComparisonRow,
+  ExamCoverageLayer,
+  KnowledgePage,
+  PageRepresentation,
+  PageSource,
+  ProfileField,
+  QuickFactLayer,
+  RelatedUnit,
+  RepresentationParsed,
+  TimelineEntry,
+} from './render-types'

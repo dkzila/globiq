@@ -26,6 +26,7 @@ import {
 } from '@/modules/audit'
 import {
   findActiveCountryByIso,
+  LocaleError,
   resolveLocaleContext,
 } from '@/modules/country-locale'
 import {
@@ -274,12 +275,22 @@ async function resolveCountryId(input: { country?: string }): Promise<{
   isoCode: string
   countryId: string
 }> {
-  const resolution = await resolveLocaleContext(input)
-  const country = await findActiveCountryByIso(resolution.country.isoCode)
-  if (!country) {
-    throw new KnowledgeError('COUNTRY_NOT_FOUND', `Country "${resolution.country.isoCode}" is not available`)
+  // Unknown/inactive countries must surface as clean 404s, not 500s (§37 —
+  // explicit validation errors on every public path).
+  try {
+    const resolution = await resolveLocaleContext(input)
+    const country = await findActiveCountryByIso(resolution.country.isoCode)
+    if (!country) {
+      throw new KnowledgeError('COUNTRY_NOT_FOUND', `Country "${resolution.country.isoCode}" is not available`)
+    }
+    return { isoCode: country.isoCode, countryId: country.id }
+  } catch (error) {
+    if (error instanceof KnowledgeError) throw error
+    if (error instanceof LocaleError) {
+      throw new KnowledgeError('COUNTRY_NOT_FOUND', error.message)
+    }
+    throw error
   }
-  return { isoCode: country.isoCode, countryId: country.id }
 }
 
 // ---------- Public reads ----------
@@ -288,6 +299,10 @@ async function resolveCountryId(input: { country?: string }): Promise<{
 export async function getPublicKnowledgeUnits(
   query: PublicKnowledgeListQuery
 ): Promise<PublicKnowledgeListResult> {
+  // Resolve the country first so an unknown/inactive country surfaces as a
+  // clean 404 (§37) — the taxonomy's LocaleError must never leak as a 500.
+  const { countryId } = await resolveCountryId({ country: query.country })
+
   // Topic visibility (ACTIVE chain + country scope) is the taxonomy's call —
   // a unit can never be more visible than its canonical topic.
   let topicDetail
@@ -306,7 +321,6 @@ export async function getPublicKnowledgeUnits(
     throw error
   }
 
-  const { countryId } = await resolveCountryId({ country: query.country })
   const where: Prisma.KnowledgeUnitWhereInput = {
     topicId: topicDetail.node.id,
     status: 'VERIFIED',

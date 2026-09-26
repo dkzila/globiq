@@ -503,7 +503,7 @@ async function materializeScheduledItem(itemId: string): Promise<void> {
  * Public and admin reads both call this, scoped to what they are reading so
  * per-request work stays bounded (§37).
  */
-async function materializeDueScheduledContent(
+export async function materializeDueScheduledContent(
   scope?: { unitId?: string; itemId?: string }
 ): Promise<void> {
   const due = await db.contentItem.findMany({

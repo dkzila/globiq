@@ -751,6 +751,51 @@ async function main() {
       ],
     },
     {
+      // P2-S5 (§23/§45): the PROFILE format — structured "key: value" fields
+      // rendered by the canonical reading page's format-aware renderer.
+      unitSlug: 'un-security-council-permanent-members',
+      languageCode: 'en',
+      format: 'PROFILE',
+      status: 'PUBLISHED',
+      revisions: [
+        {
+          title: 'UN Security Council — Profile',
+          body: 'Established: 1945 (Chapter V, UN Charter)\nHeadquarters: United Nations, New York\nTotal members: 15 (5 permanent, 10 non-permanent)\nPermanent members (P5): China, France, Russia, United Kingdom, United States\nNon-permanent members: elected by the General Assembly for two-year terms, no immediate re-election\nVoting on substantive matters: 9 of 15 affirmative votes, including no P5 veto\nPresident: rotates monthly in alphabetical order of member names\nSubsidiary bodies: sanctions committees, peacekeeping mandates, working groups on documentation and counter-terrorism\nReform track: Intergovernmental Negotiations (IGN); India\'s permanent-seat claim is backed by the G4',
+          publishedAt: new Date('2025-06-15T08:30:00Z'),
+        },
+      ],
+    },
+    {
+      // P2-S5 (§23/§45): the COMPARISON format — "axis | left | right" rows,
+      // the classic FR-vs-DPSP exam distinction on the same canonical record.
+      unitSlug: 'fundamental-rights-articles-12-35',
+      languageCode: 'en',
+      format: 'COMPARISON',
+      status: 'PUBLISHED',
+      revisions: [
+        {
+          title: 'Fundamental Rights vs Directive Principles — Comparison',
+          body: 'Enshrined in | Part III (Articles 12–35) | Part IV (Articles 36–51)\nNature | Justiciable — enforceable by courts | Non-justiciable — not enforceable by courts\nAim | Political democracy and individual liberty | Social and economic welfare\nSource | Bill of Rights tradition (US) | Irish Constitution (1937)\nConflict doctrine | prevail if a law is irreconcilable with both | must yield to Fundamental Rights; harmonious construction preferred otherwise\nBorrowed features | largely colonial-era rights recast | Directive Principles of State Policy\nLandmark reading | Minerva Mills (1980): balance is part of the basic structure | Champakam Dorairajan (1951) framed the harmony rule',
+          publishedAt: new Date('2025-06-11T09:00:00Z'),
+        },
+      ],
+    },
+    {
+      // P2-S5 (§23/§45): the TIMELINE format on its natural unit — the Berlin
+      // Wall record (type TIMELINE), "date — event" lines per §23 convention.
+      unitSlug: 'fall-of-the-berlin-wall-1989',
+      languageCode: 'en',
+      format: 'TIMELINE',
+      status: 'PUBLISHED',
+      revisions: [
+        {
+          title: 'The Berlin Wall — Key Milestones',
+          body: '13 August 1961 — The German Democratic Republic seals the border and begins building the Wall, stopping the exodus to West Berlin.\n26 June 1963 — President John F. Kennedy declares "Ich bin ein Berliner" at Rudolph Wilde Platz.\n1961–1989 — The Wall divides Berlin for 28 years; at least 140 people die trying to cross.\n9 November 1989 — After a botched Schabowski press conference, the crossings open; the Wall falls.\n3 October 1990 — Germany is formally reunified.\n1990 — East and West Germany sign the Unification Treaty; Soviet troops begin withdrawal.',
+          publishedAt: new Date('2025-06-18T14:00:00Z'),
+        },
+      ],
+    },
+    {
       unitSlug: 'chandrayaan-3-landing-2023',
       languageCode: 'en',
       format: 'FACT_CARD',
