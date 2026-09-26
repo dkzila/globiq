@@ -34,7 +34,10 @@ import type {
   PublicTopicLabel,
   PublicTopicNode,
   PublicTopicPathEntry,
+  TopicIdentity,
   TopicPermissions,
+  TopicScopePublic,
+  TopicStatusPublic,
   TopicSearchResult,
 } from './types'
 import type {
@@ -216,6 +219,22 @@ async function resolveContext(input: {
 }
 
 // ---------- Scoped RBAC (§38: ADMIN global, COUNTRY_ADMIN own extensions) ----------
+
+export async function getTopicIdentity(ref: string): Promise<TopicIdentity | null> {
+  const snapshot = await getTaxonomySnapshot()
+  const topic = topicByRef(snapshot, ref)
+  if (!topic) return null
+  return {
+    id: topic.id,
+    slug: topic.slug,
+    canonicalName: topic.canonicalName,
+    status: topic.status,
+    scope: topic.scope,
+    countryId: topic.countryId,
+    countryIso: countryIsoOf(snapshot, topic.countryId),
+    parentId: topic.parentId,
+  }
+}
 
 /** Target country of a node for the shared permission layer: null = global. */
 function targetCountryOf(topic: TopicRow): { countryId: string | null } {

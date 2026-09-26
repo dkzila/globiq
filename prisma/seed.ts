@@ -457,12 +457,169 @@ async function main() {
     }
   }
 
+  // ---------- P2-S1: Knowledge Units (Master Plan §45) ----------
+  // Structurally rich: multiple types (§23), difficulties, scopes (§14) and
+  // lifecycle statuses — one DRAFT unit exercises the transition demo. Seed
+  // writes never overwrite live edits made through the CRUD APIs (§36).
+
+  interface KnowledgeSeed {
+    slug: string
+    canonicalName: string
+    canonicalSummary: string
+    canonicalBody: string
+    type:
+      | 'FACT'
+      | 'CONCEPT'
+      | 'TIMELINE'
+      | 'PERSON_PROFILE'
+      | 'PLACE_PROFILE'
+      | 'ORGANISATION_PROFILE'
+      | 'COMPARISON'
+    status: 'DRAFT' | 'IN_REVIEW' | 'VERIFIED' | 'OUTDATED' | 'ARCHIVED'
+    difficulty: 'BASIC' | 'INTERMEDIATE' | 'ADVANCED'
+    scope: 'GLOBAL' | 'COUNTRY'
+    topicSlug: string
+    validFrom?: Date
+    orderIndex?: number
+  }
+
+  const knowledgeUnits: KnowledgeSeed[] = [
+    {
+      slug: 'fundamental-rights-articles-12-35',
+      canonicalName: 'Fundamental Rights — Articles 12–35',
+      canonicalSummary:
+        'Part III of the Constitution guarantees six Fundamental Rights, enforceable against the State under Article 32.',
+      canonicalBody:
+        'Fundamental Rights are enshrined in Part III of the Constitution of India, Articles 12–35. Article 12 defines "the State" broadly (legislature, executive, local authorities, statutory bodies), and Article 13 bars laws inconsistent with Fundamental Rights. The six rights are: Equality (14–18), Freedom (19–22), Against Exploitation (23–24), Freedom of Religion (25–28), Cultural & Educational (29–30), and Constitutional Remedies (32). Dr B R Ambedkar called Article 32 — the right to move the Supreme Court directly — the "heart and soul" of the Constitution. Key land laws and judgments that shaped these rights include Maneka Gandhi v. Union of India (1978), which read Article 21 expansively.',
+      type: 'CONCEPT',
+      status: 'VERIFIED',
+      difficulty: 'INTERMEDIATE',
+      scope: 'COUNTRY',
+      topicSlug: 'fundamental-rights',
+      orderIndex: 1,
+    },
+    {
+      slug: 'right-to-constitutional-remedies-article-32',
+      canonicalName: 'Right to Constitutional Remedies — Article 32',
+      canonicalSummary:
+        'Article 32 lets citizens move the Supreme Court directly to enforce Fundamental Rights; Ambedkar called it the heart and soul of the Constitution.',
+      canonicalBody:
+        'Article 32 of the Constitution provides the right to move the Supreme Court by appropriate proceedings for the enforcement of Fundamental Rights, making those rights justiciable rather than declaratory. The Supreme Court may issue writs of habeas corpus, mandamus, prohibition, certiorari and quo warranto. Dr B R Ambedkar described Article 32 as "the very soul of the Constitution and the very heart of it" because a right without a remedy is meaningless. The Article cannot be suspended except during a Emergency as provided by the Constitution (Article 359).',
+      type: 'CONCEPT',
+      status: 'VERIFIED',
+      difficulty: 'ADVANCED',
+      scope: 'COUNTRY',
+      topicSlug: 'fundamental-rights',
+      orderIndex: 2,
+    },
+    {
+      slug: 'ashoka-kalinga-war-261-bce',
+      canonicalName: "Ashoka's Kalinga War — 261 BCE",
+      canonicalSummary:
+        'The Kalinga War (c. 261 BCE) turned Emperor Ashoka from conquest to Dhamma; its death toll is recorded in his 13th Rock Edict.',
+      canonicalBody:
+        'The Kalinga War, fought c. 261 BCE in the third year of Ashoka\'s reign, was the decisive turning point of Mauryan history. Ashoka\'s 13th Rock Edict records that 100,000 were killed, 150,000 deported and many more died afterwards. The remorse Ashoka expressed led him to embrace Buddhism and pursue "conquest by Dhamma" (Dhamma Vijaya) instead of war. Kalinga corresponds to present-day coastal Odisha. The war is a favourite exam anchor for Mauryan history questions.',
+      type: 'FACT',
+      status: 'VERIFIED',
+      difficulty: 'BASIC',
+      scope: 'COUNTRY',
+      topicSlug: 'mauryan-empire',
+      orderIndex: 1,
+    },
+    {
+      slug: 'un-security-council-permanent-members',
+      canonicalName: 'UN Security Council — Permanent Members',
+      canonicalSummary:
+        'The P5 — China, France, Russia, the UK and the US — hold permanent seats and veto power on the 15-member Security Council.',
+      canonicalBody:
+        'The United Nations Security Council has 15 members: five permanent (the P5 — China, France, Russia, the United Kingdom and the United States, the victors of the Second World War institutionalised in 1945) and ten non-permanent members elected for two-year terms without immediate re-election. Decisions on substantive matters require nine affirmative votes including no veto from any permanent member (Chapter V of the UN Charter). Reform of the Council — including India\'s long-standing bid for a permanent seat — is debated under the Intergovernmental Negotiations process.',
+      type: 'CONCEPT',
+      status: 'VERIFIED',
+      difficulty: 'BASIC',
+      scope: 'GLOBAL',
+      topicSlug: 'united-nations',
+      orderIndex: 1,
+    },
+    {
+      slug: 'fall-of-the-berlin-wall-1989',
+      canonicalName: 'Fall of the Berlin Wall — 1989',
+      canonicalSummary:
+        'On 9 November 1989 the Berlin Wall fell after 28 years, catalysing German reunification (1990) and the collapse of the Eastern Bloc.',
+      canonicalBody:
+        'The Berlin Wall, erected on 13 August 1961 by the German Democratic Republic to stop the exodus to West Berlin, fell on the night of 9 November 1989 after a botched press conference by Günter Schabowski opened the crossings. The Wall had stood for 28 years. Its fall catalysed the reunification of Germany on 3 October 1990 and accelerated the collapse of communist regimes across the Eastern Bloc. Timeline anchors for exams: construction 1961, Kennedy\'s "Ich bin ein Berliner" 1963, fall 1989, reunification 1990.',
+      type: 'TIMELINE',
+      status: 'VERIFIED',
+      difficulty: 'INTERMEDIATE',
+      scope: 'GLOBAL',
+      topicSlug: 'world-history',
+      orderIndex: 1,
+    },
+    {
+      slug: 'chandrayaan-3-landing-2023',
+      canonicalName: 'Chandrayaan-3 Landing — 23 August 2023',
+      canonicalSummary:
+        'Chandrayaan-3 made India the fourth country to soft-land on the Moon and the first near the lunar south pole.',
+      canonicalBody:
+        'ISRO\'s Chandrayaan-3 mission soft-landed its Vikram lander near the lunar south pole on 23 August 2023, making India the fourth country to achieve a Moon soft landing (after the USSR, USA and China) and the first to land in the southern polar region. The mission was launched on 14 July 2023 aboard LVM3-M4. The Pragyan rover conducted in-situ experiments before lunar night. The landing site was named "Shiv Shakti Point", and 23 August is now observed as National Space Day in India.',
+      type: 'FACT',
+      status: 'VERIFIED',
+      difficulty: 'INTERMEDIATE',
+      scope: 'COUNTRY',
+      topicSlug: 'isro-programmes',
+      validFrom: new Date('2023-08-23T00:00:00Z'),
+      orderIndex: 1,
+    },
+    {
+      slug: 'attorney-general-of-india',
+      canonicalName: 'Attorney General of India',
+      canonicalSummary:
+        'Article 76 creates the Attorney General, the Union\'s chief legal adviser and senior advocate; a DRAFT seed unit for the lifecycle demo.',
+      canonicalBody:
+        'The Attorney General for India is the Government of India\'s chief legal adviser, appointed by the President under Article 76 of the Constitution. The appointee must be qualified to be a Supreme Court judge. The Attorney General has the right of audience in all courts in India and takes part in parliamentary proceedings (without a vote). This seed unit starts in DRAFT to exercise the lifecycle transitions (submit_review → verify) end-to-end.',
+      type: 'CONCEPT',
+      status: 'DRAFT',
+      difficulty: 'ADVANCED',
+      scope: 'COUNTRY',
+      topicSlug: 'constitutional-framework',
+      orderIndex: 1,
+    },
+  ]
+
+  let knowledgeSeeded = 0
+  for (const seed of knowledgeUnits) {
+    const topicId = topicIdBySlug.get(seed.topicSlug)
+    if (!topicId) {
+      console.warn(`[seed] skipping knowledge unit "${seed.slug}": topic "${seed.topicSlug}" not found`)
+      continue
+    }
+    await prisma.knowledgeUnit.upsert({
+      where: { slug: seed.slug },
+      update: {},
+      create: {
+        slug: seed.slug,
+        canonicalName: seed.canonicalName,
+        canonicalSummary: seed.canonicalSummary,
+        canonicalBody: seed.canonicalBody,
+        type: seed.type,
+        status: seed.status,
+        difficulty: seed.difficulty,
+        scope: seed.scope,
+        countryId: seed.scope === 'COUNTRY' ? india.id : null,
+        topicId,
+        validFrom: seed.validFrom ?? null,
+        orderIndex: seed.orderIndex ?? 0,
+        createdById: admin.id,
+      },
+    })
+    knowledgeSeeded += 1
+  }
+
   console.log(
     `Seed complete → languages: ${[en.code, hi.code, fr.code].join(', ')} | countries: ${[
       `${india.isoCode} (default)`,
       `${uk.isoCode} (coming soon)`,
       `${france.isoCode} (coming soon)`,
-    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | taxonomy: ${topicIdBySlug.size} nodes`
+    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded}`
   )
 }
 

@@ -68,4 +68,6 @@ export const RATE_LIMITS = {
   taxonomyRead: { limit: 60, windowMs: 60 * 1000 }, // public tree/detail/search per IP
   taxonomyWrite: { limit: 30, windowMs: 60 * 1000 }, // admin taxonomy mutations per IP
   auditRead: { limit: 60, windowMs: 60 * 1000 }, // admin audit trail reads per IP
+  knowledgeRead: { limit: 60, windowMs: 60 * 1000 }, // public knowledge list/detail per IP
+  knowledgeWrite: { limit: 30, windowMs: 60 * 1000 }, // admin knowledge mutations per IP
 } as const

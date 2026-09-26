@@ -87,6 +87,79 @@ enum TopicScope {
   COUNTRY // country-specific extension
 }
 
+// ---------- P2-S1: KnowledgeUnit (Master Plan §6, §7, §14, §23, §36) ----------
+
+// Canonical knowledge type (§23 canonical content types — assessment formats
+// QnA/Question/MockTest are separate entities referencing a KnowledgeUnit,
+// never types of it; representation formats like explainer/current-event/notes
+// are ContentItem formats, P2-S2).
+enum KnowledgeUnitType {
+  FACT
+  CONCEPT
+  TIMELINE
+  PERSON_PROFILE
+  PLACE_PROFILE
+  ORGANISATION_PROFILE
+  COMPARISON
+}
+
+// Lifecycle states (§6 + P2-S1 session scope). The full editorial workflow
+// (§19 review gates, Senior Editor/Fact Checker roles) lands in P2-S4; this
+// is the KnowledgeUnit's own state machine. Public visibility = VERIFIED only.
+enum KnowledgeStatus {
+  DRAFT // being authored; full edit; not public
+  IN_REVIEW // submitted for verification; full edit; not public
+  VERIFIED // canonical truth; publicly visible; body locked (§36 no silent edits)
+  OUTDATED // flagged for correction (feedback/event); body editable again
+  ARCHIVED // end-of-life; read-only, like RETIRED taxonomy nodes (§36)
+}
+
+// Difficulty (§6 row: "difficulty") — the canonical knowledge's inherent level;
+// per-exam required_depth is ExamMapping (P3), a different dimension.
+enum KnowledgeDifficulty {
+  BASIC
+  INTERMEDIATE
+  ADVANCED
+}
+
+// The canonical semantic record (§7): the reusable "thing to know", stored
+// ONCE. Country/language/format/depth are rendering dimensions — representations
+// (ContentItem, QnA, Question) reference this record from P2-S2 onward and are
+// NEVER re-entered facts. Country scope is explicit, never inferred (§14/§15).
+model KnowledgeUnit {
+  id              String             @id @default(cuid())
+  slug            String             @unique // immutable, URL-stable (§16/§36)
+  canonicalName   String // canonical (English-reference) name
+  canonicalSummary String? // one-line essence — the "quick fact" (§22 knowledge page)
+  canonicalBody   String // canonical body (English-reference); language versions are ContentItems (P2-S2)
+  type            KnowledgeUnitType
+  status          KnowledgeStatus    @default(DRAFT)
+  difficulty      KnowledgeDifficulty @default(BASIC)
+  scope           TopicScope         @default(GLOBAL) // platform-wide GLOBAL/COUNTRY scope concept (§14)
+  countryId       String? // set iff scope = COUNTRY (explicit, never inferred)
+  topicId         String // canonical taxonomy topic (§13) — primary node
+  validFrom       DateTime? // time validity window (§6 "validity")
+  validUntil      DateTime?
+  notes           String? // internal editorial notes
+  orderIndex      Int                @default(0) // stable ordering within a topic
+  createdById     String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  topic     Topic   @relation("KnowledgeUnitTopic", fields: [topicId], references: [id])
+  country   Country? @relation("KnowledgeUnitCountry", fields: [countryId], references: [id])
+  createdBy User?   @relation("KnowledgeUnitAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Deduplication is by canonical identity (§11): within one topic, a canonical
+  // name identifies exactly one unit. Never merge distinct concepts; never
+  // duplicate identical ones.
+  @@unique([topicId, canonicalName])
+  @@index([status])
+  @@index([scope, countryId])
+  @@index([topicId, status])
+  @@index([type])
+}
+
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
 
 // Language is a first-class localisation dimension. `code` is the URL segment
@@ -132,6 +205,7 @@ model Country {
   supported       CountryLanguage[] // languages configured for this country only (§35)
   users           User[]
   topics          Topic[] // country-scoped taxonomy extension nodes (§13)
+  knowledgeUnits  KnowledgeUnit[] @relation("KnowledgeUnitCountry")
 
   @@index([status])
 }
@@ -176,6 +250,7 @@ model User {
   preferredLanguage Language?      @relation(fields: [preferredLanguageId], references: [id])
   authSessions      AuthSession[]
   auditLogs         AuditLog[]
+  authoredKnowledgeUnits KnowledgeUnit[] @relation("KnowledgeUnitAuthor")
 
   @@index([homeCountryId])
   @@index([preferredLanguageId])
@@ -227,6 +302,7 @@ model Topic {
   country  Country?     @relation(fields: [countryId], references: [id])
   labels   TopicLabel[]
   aliases  TopicAlias[]
+  knowledgeUnits KnowledgeUnit[] @relation("KnowledgeUnitTopic")
 
   @@index([parentId, orderIndex])
   @@index([status])

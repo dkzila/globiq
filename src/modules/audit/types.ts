@@ -81,10 +81,15 @@ export const AUDIT_ACTIONS = {
   topicRetire: 'taxonomy.topic.retire',
   topicLabelsSet: 'taxonomy.topic.labels.set',
   topicAliasesSet: 'taxonomy.topic.aliases.set',
+  knowledgeUnitCreate: 'knowledge.unit.create',
+  knowledgeUnitUpdate: 'knowledge.unit.update',
+  knowledgeUnitTransition: 'knowledge.unit.transition',
   /** Route permission-gate denials (requirePermission). */
   accessDenied: 'access.denied',
   /** Object-level taxonomy denials (country/scope mismatch — §20 signal). */
   taxonomyDenied: 'taxonomy.topic.denied',
+  /** Object-level knowledge denials (country/scope/state mismatch — §20 signal). */
+  knowledgeDenied: 'knowledge.unit.denied',
 } as const
 
 /** Object type vocabulary (§6 entities that exist so far). */
@@ -94,5 +99,6 @@ export const AUDIT_OBJECT_TYPES = {
   country: 'Country',
   language: 'Language',
   topic: 'Topic',
+  knowledgeUnit: 'KnowledgeUnit',
   permission: 'Permission',
 } as const

@@ -12,6 +12,20 @@ export type TopicScopePublic = 'GLOBAL' | 'COUNTRY'
 // (src/lib/permissions.ts — role + home-country scope), built by
 // `actorFromUser` in the identity-access module.
 
+/** Cross-module identity for a topic (knowledge module P2-S1: KU attachment
+ * invariants need the topic's scope/country/status). All statuses visible
+ * (admin-side lookup). */
+export interface TopicIdentity {
+  id: string
+  slug: string
+  canonicalName: string
+  status: TopicStatusPublic
+  scope: TopicScopePublic
+  countryId: string | null
+  countryIso: string | null
+  parentId: string | null
+}
+
 /** Per-node permissions the admin UI renders from (scoped enforcement §38). */
 export interface TopicPermissions {
   canEdit: boolean
