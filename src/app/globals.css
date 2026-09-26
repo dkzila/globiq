@@ -120,3 +120,22 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* GlobIQ — slim scrollbars for long lists (sessions, module maps, …) */
+@layer utilities {
+  .globiq-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .globiq-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .globiq-scroll::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: var(--border);
+  }
+  .globiq-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

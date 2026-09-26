@@ -51,6 +51,17 @@ export function fail(
 /** Common error factories (explicit, actionable messages — §37). */
 export const errors = {
   badRequest: (message: string, details?: unknown) => fail(message, 'BAD_REQUEST', 400, details),
+  unauthorized: (message = 'Authentication required') => fail(message, 'UNAUTHORIZED', 401),
+  forbidden: (message = 'You do not have access to this resource') =>
+    fail(message, 'FORBIDDEN', 403),
   notFound: (what: string) => fail(`${what} not found`, 'NOT_FOUND', 404),
+  conflict: (message: string, details?: unknown) => fail(message, 'CONFLICT', 409, details),
+  rateLimited: (retryAfterSec: number) =>
+    fail(
+      `Too many attempts. Try again in ${retryAfterSec} seconds.`,
+      'RATE_LIMITED',
+      429,
+      { retryAfterSec }
+    ),
   serviceUnavailable: (message: string) => fail(message, 'SERVICE_UNAVAILABLE', 503),
 } as const

@@ -1,12 +1,12 @@
 'use client'
 
 /**
- * GlobIQ — P1-S1 Foundation Status Page
+ * GlobIQ — Foundation Status Page (P1-S1 → P1-S2)
  *
  * Temporary homepage: proves the foundation end-to-end (database, API-first
- * pattern, module registry) until the real India discovery homepage lands in
- * P4-S2 (Master Plan §34). This page consumes the same /api/health endpoint
- * a future mobile client would use (§4, §39).
+ * pattern, module registry, token-based identity) until the real India
+ * discovery homepage lands in P4-S2 (Master Plan §34). This page consumes
+ * the same /api endpoints a future mobile client would use (§4, §39).
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -37,6 +37,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { PLATFORM } from '@/config/platform'
 import { PHASES } from '@/config/roadmap'
 import { MODULES } from '@/modules'
+import { AccountSection } from '@/components/auth/account-section'
+import { HeaderAuth } from '@/components/auth/header-auth'
 
 // ---------- Types (mirrors /api/health contract) ----------
 
@@ -142,9 +144,12 @@ export default function FoundationStatusPage() {
               <p className="hidden text-xs text-zinc-500 sm:block">{PLATFORM.tagline}</p>
             </div>
           </div>
-          <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700">
-            Phase 1 · Session 1 — Foundation
-          </Badge>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Badge variant="outline" className="shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700">
+              Phase 1 · Session 2 — Identity
+            </Badge>
+            <HeaderAuth />
+          </div>
         </div>
       </header>
 
@@ -169,8 +174,8 @@ export default function FoundationStatusPage() {
             </span>
           </h1>
           <p className="max-w-2xl text-base text-zinc-600 sm:text-lg">
-            {PLATFORM.description} This page verifies the P1-S1 foundation: database, APIs, module
-            architecture and CI — the base every later session builds on.
+            {PLATFORM.description} This page verifies the running foundation: database, APIs, module
+            architecture, CI — and now token-based identity (P1-S2): sign in, sessions, revocation.
           </p>
 
           {/* Live status pill */}
@@ -308,6 +313,9 @@ export default function FoundationStatusPage() {
           </div>
         </section>
 
+        {/* ---------- Account (P1-S2: token-based identity) ---------- */}
+        <AccountSection />
+
         {/* ---------- Seeded countries ---------- */}
         <section aria-labelledby="countries-heading" className="mt-10 space-y-4">
           <div className="flex items-center gap-2">
@@ -442,7 +450,7 @@ export default function FoundationStatusPage() {
           </div>
           <p className="text-sm text-zinc-600">
             One chat = one session (§41). Currently executing{' '}
-            <strong className="text-zinc-900">P1-S1 of 55 sessions</strong> in the vertical slice.
+            <strong className="text-zinc-900">P1-S2 of 55 sessions</strong> in the vertical slice.
           </p>
           <ol className="flex flex-wrap gap-2">
             {PHASES.map((phase) => (

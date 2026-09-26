@@ -44,6 +44,25 @@ enum CountryStatus {
   INACTIVE
 }
 
+// P1-S2 (§6, §20, §38): roles are platform-level; country/language scoping for
+// privileged roles is enforced per-operation from P1-S5 onward.
+enum UserRole {
+  READER
+  WRITER
+  COUNTRY_ADMIN
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AuthMethod {
+  PASSWORD
+}
+
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
 
 // Language is a first-class localisation dimension. `code` is the URL segment
@@ -105,21 +124,52 @@ model CountryLanguage {
   @@index([languageId])
 }
 
-// ---------- Base User (auth lands in P1-S2 — Master Plan §6, §43) ----------
+// ---------- P1-S2: Identity & Access (Master Plan §6, §20, §30, §39, §43) ----------
 
+// Base user + auth fields (roles, status, auth method). Onboarding state lands
+// in P5-S3 (personalisation) — do not add early (§41 session protocol).
 model User {
-  id                  String   @id @default(cuid())
-  email               String   @unique
+  id                  String     @id @default(cuid())
+  email               String     @unique
   name                String?
   homeCountryId       String?
   preferredLanguageId String?
-  // auth fields, roles, onboarding state → P1-S2 / P5-S3
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  // Auth (P1-S2): token-based identity — the same Bearer-token contract serves
+  // the website today and native apps later (§4, §39).
+  passwordHash        String? // null reserved for future non-password auth methods
+  role                UserRole  @default(READER)
+  status              UserStatus @default(ACTIVE)
+  authMethod          AuthMethod @default(PASSWORD)
+  emailVerifiedAt     DateTime? // verification flow itself is a later concern
+  lastLoginAt         DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
-  homeCountry       Country?  @relation(fields: [homeCountryId], references: [id])
-  preferredLanguage Language? @relation(fields: [preferredLanguageId], references: [id])
+  homeCountry       Country?       @relation(fields: [homeCountryId], references: [id])
+  preferredLanguage Language?      @relation(fields: [preferredLanguageId], references: [id])
+  authSessions      AuthSession[]
 
   @@index([homeCountryId])
   @@index([preferredLanguageId])
+  @@index([status])
+}
+
+// One row per issued Bearer token (a logged-in device/app). Only the SHA-256
+// hash of the token is stored — the raw token exists solely in the client's
+// hands. Sessions are listable and revocable (logout = revoke current session;
+// "sign out everywhere" = revoke all — §30 security posture).
+model AuthSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  label      String? // client-provided device/app label, e.g. "Web — Chrome"
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime? // null = active
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }

@@ -1,16 +1,26 @@
 /**
- * GlobIQ — P1-S1 Seed
+ * GlobIQ — P1-S1 + P1-S2 Seed
  * Master Plan §45 (Seed Data Strategy): intentionally small but structurally rich.
  *
  * P1-S1 scope: languages + countries (India = default root market, English default).
  * India's supported languages: English (default) + Hindi — matching the URL
  * architecture in §16/Appendix B ("/" for English, "/hi/" for Hindi).
  *
+ * P1-S2 scope: one development admin account (§45 "sample editorial users with
+ * scoped roles" begins here; full scoped staff seeding lands with the editorial
+ * console in P2-S4/S5). Credentials are DEV-ONLY — never use in production.
+ *
  * Run: bun run db:seed
  */
 import { PrismaClient } from '@prisma/client'
 
+import { hashPassword } from '../src/modules/identity-access/password'
+
 const prisma = new PrismaClient()
+
+// Dev-only admin credentials (documented in docs/sessions/P1-S2.md).
+const DEV_ADMIN_EMAIL = 'admin@globiq.dev'
+const DEV_ADMIN_PASSWORD = 'GlobIQ-Dev-Admin-1'
 
 async function main() {
   // ---------- Languages ----------
@@ -135,12 +145,28 @@ async function main() {
     })
   }
 
+  // ---------- Dev admin (P1-S2, §45) ----------
+  const admin = await prisma.user.upsert({
+    where: { email: DEV_ADMIN_EMAIL },
+    update: {}, // never overwrite a manually-changed password on re-seed
+    create: {
+      email: DEV_ADMIN_EMAIL,
+      name: 'Dev Admin',
+      passwordHash: await hashPassword(DEV_ADMIN_PASSWORD),
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      emailVerifiedAt: new Date(),
+      homeCountryId: india.id,
+      preferredLanguageId: en.id,
+    },
+  })
+
   console.log(
     `Seed complete → languages: ${[en.code, hi.code, fr.code].join(', ')} | countries: ${[
       `${india.isoCode} (default)`,
       `${uk.isoCode} (coming soon)`,
       `${france.isoCode} (coming soon)`,
-    ].join(', ')}`
+    ].join(', ')} | dev admin: ${admin.email} (ADMIN)`
   )
 }
 
