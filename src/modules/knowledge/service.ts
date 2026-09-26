@@ -18,6 +18,7 @@ import type { Prisma, KnowledgeUnit } from '@prisma/client'
 
 import { db } from '@/lib/db'
 import { assertCan, can, type Actor } from '@/lib/permissions'
+import { onUnitChanged } from '@/modules/search'
 import {
   AUDIT_ACTIONS,
   AUDIT_OBJECT_TYPES,
@@ -587,6 +588,10 @@ export async function createKnowledgeUnit(
     userAgent: meta.userAgent ?? null,
   })
 
+  // P4-S1 §17: keep the search index coherent with the lifecycle (no-op for
+  // a DRAFT create; re-projects the moment a unit becomes public).
+  await onUnitChanged(created.slug)
+
   return toAdminUnit(actor, created)
 }
 
@@ -675,6 +680,9 @@ export async function updateKnowledgeUnit(
     userAgent: meta.userAgent ?? null,
   })
 
+  // P4-S1 §17: canonical name/summary changes re-project the unit's documents.
+  await onUnitChanged(updated.slug)
+
   return toAdminUnit(actor, updated)
 }
 
@@ -724,6 +732,10 @@ export async function transitionKnowledgeUnit(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+
+  // P4-S1 §17/§36: a lifecycle transition changes public visibility — verify
+  // adds the unit to the index, archive/outdated removes it.
+  await onUnitChanged(updated.slug)
 
   return toAdminUnit(actor, updated)
 }

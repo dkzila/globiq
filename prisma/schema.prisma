@@ -630,6 +630,73 @@ model SyllabusNode {
   @@index([topicId])
 }
 
+// ---------- P4-S1: Search (Master Plan §6, §17, §29, §43) ----------
+
+// §17: "Search is a first-class product, not merely database text search" —
+// this table is the platform's OWN vendor-neutral index format (§29 "the
+// domain model must not depend on a specific search vendor"): the indexing
+// pipeline projects published canonical objects into these documents, and the
+// query engine reads them. Swapping in a managed search service later means
+// re-pointing the engine adapter — never touching KnowledgeUnit/Exam/Topic.
+//
+// Granularity: one document per PUBLIC OBJECT × INDEXED LANGUAGE VARIANT
+// (§7/§35 — representations are per-language; only languages that actually
+// carry a published surface are indexed, never planned ones). §17 canonical-
+// object deduplication is enforced at query time on (objectType, ref): the
+// same unit's English and Hindi documents never both appear in one result
+// list — the reader-language document wins, other-language documents are
+// matched only through `neutralText` and presented as a canonical fallback.
+enum SearchObjectType {
+  KNOWLEDGE_UNIT // §7 canonical record — its public surface is the §22 page
+  EXAM // §6 country exam — public surface is the §22 exam overview
+  TOPIC // §13 canonical taxonomy node — public surface is the /gk/{topic}/ hub
+}
+
+model SearchDocument {
+  id           String           @id @default(cuid())
+  objectType   SearchObjectType
+  ref          String // public slug of the object (unit/exam/topic slug — §37 stable identifier)
+  languageCode String // ISO code of the indexed language variant ('en', 'hi', …)
+  // §14/§15 country scope, denormalised for server-side filtering: null =
+  // GLOBAL (visible in every ACTIVE country); a code = that market only.
+  countryIso   String?
+  title        String // display title in the indexed language
+  canonicalName String // English-reference canonical name (canonical-fallback presentation, §7)
+  summary      String? // quick fact / description in the indexed language
+  // Localised searchable text: representation titles + bodies + summary.
+  // Tokenised INTO tsvLang at index time with the language's FTS config
+  // (§17 "language-aware tokenisation" — 'english'/'hindi', verified live).
+  bodyText     String
+  // Language-neutral searchable text: canonical name + aliases + slug — the
+  // cross-language surface (§17 aliases; a Hindi-context query finds an
+  // English-only unit by canonical name and gets a canonical-fallback result).
+  neutralText  String
+  aliases      Json? // string[] — editorial aliases (§13 TopicAlias, exam codes) for exact/prefix tiers
+  topicSlug    String? // units: the §13 primary topic slug; topics: the node's own slug
+  topicLabel   String? // §35 topic label in the indexed language
+  unitType     String? // units only: KnowledgeUnitType
+  difficulty   String? // units only: KnowledgeDifficulty
+  // string[] of exam slugs whose CURRENT §36 version carries an in-effect §8
+  // mapping to this unit (any country — reader-country scoping happens at
+  // query time, §14: a GB exam's requirement never leaks into an IN reader).
+  examRefs     Json?
+  freshnessAt  DateTime // ranking input (§17 freshness boosting; CurrentEvent lands P6)
+  indexedAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Index-time tokenisation (§17): the pipeline writes these via raw SQL
+  // (to_tsvector(<language config>, bodyText) / to_tsvector('simple', neutralText)).
+  // GIN indexes are created idempotently by the engine's readiness step.
+  tsvLang      Unsupported("tsvector")?
+  tsvNeutral   Unsupported("tsvector")?
+
+  @@unique([objectType, ref, languageCode])
+  @@index([languageCode])
+  @@index([objectType, ref])
+  @@index([countryIso])
+  @@index([freshnessAt])
+}
+
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
 
 // Language is a first-class localisation dimension. `code` is the URL segment

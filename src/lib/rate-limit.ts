@@ -78,4 +78,6 @@ export const RATE_LIMITS = {
   editorialWrite: { limit: 30, windowMs: 60 * 1000 }, // editorial task mutations per IP
   examsRead: { limit: 60, windowMs: 60 * 1000 }, // public exam directory/detail per IP
   examsWrite: { limit: 30, windowMs: 60 * 1000 }, // admin exam/version mutations per IP
+  searchRead: { limit: 60, windowMs: 60 * 1000 }, // public search queries per IP (P4-S1)
+  searchWrite: { limit: 10, windowMs: 60 * 1000 }, // admin index rebuilds/stats per IP (P4-S1)
 } as const

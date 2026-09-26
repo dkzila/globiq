@@ -24,6 +24,7 @@ import {
   resolveLocaleContext,
 } from '@/modules/country-locale'
 import type { LocaleResolution } from '@/modules/country-locale'
+import { onTopicChanged } from '@/modules/search'
 import { getTaxonomySnapshot, invalidateTaxonomySnapshot } from './cache'
 import type { TaxonomySnapshot, TopicRow } from './cache'
 import type {
@@ -749,6 +750,8 @@ export async function createTopic(
       ip: meta.ip ?? null,
       userAgent: meta.userAgent ?? null,
     })
+    // P4-S1 §17: an ACTIVE topic is immediately a searchable /gk/ hub.
+    await onTopicChanged(input.slug)
     return detail
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -845,6 +848,9 @@ export async function updateTopic(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+  // P4-S1 §17: canonical name/status changes re-project the hub (and its
+  // units, which carry the topic's label chips and §14 scope).
+  await onTopicChanged(topic.slug)
   return detail
 }
 
@@ -890,6 +896,8 @@ export async function retireTopic(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+  // P4-S1 §17/§36: retirement removes the hub — and its units — from the index.
+  await onTopicChanged(topic.slug)
   return detail
 }
 
@@ -952,6 +960,8 @@ export async function setTopicLabels(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+  // P4-S1 §17/§35: labels are the hub's per-language search surface.
+  await onTopicChanged(topic.slug)
   return detail
 }
 
@@ -1014,5 +1024,8 @@ export async function setTopicAliases(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+  // P4-S1 §17: aliases are editorial synonyms — they re-project the hub AND
+  // every unit under it (units bake topic aliases into their neutral text).
+  await onTopicChanged(topic.slug)
   return detail
 }

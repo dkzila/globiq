@@ -39,6 +39,7 @@ export type Permission =
   | 'source:manage' // create/edit/verify Source evidence records (§24 — platform-level registry; link/unlink rides content:manage on the item)
   | 'editorial:work' // work the editorial task board (P2-S4 §19): ADMIN + COUNTRY_ADMIN manage; WRITER claims/works assigned tasks in scope
   | 'exam:manage' // manage exams + exam versions (P3-S1 §18): ADMIN + COUNTRY_ADMIN (own country only — exams are ALWAYS country-owned, §14)
+  | 'search:manage' // platform-wide index rebuild + stats (P4-S1 §38 admin console): ADMIN only — the index is a derived projection of every country's data
   | 'country-config:manage' // platform country configuration (ADMIN only — §14/§38)
   | 'language:manage' // platform language registry (ADMIN only — §35)
   | 'audit:read' // read the accountability trail (ADMIN only in P1)
@@ -94,6 +95,7 @@ const ROLE_CATEGORY_GRANTS: Record<UserRole, Permission[]> = {
     'country-config:manage',
     'language:manage',
     'audit:read',
+    'search:manage',
     'sessions:manage-own',
   ],
   // Sources are platform-level shared evidence (§24) — the record itself is
@@ -208,6 +210,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'source:manage': 'Manage source evidence & verification (§24)',
   'editorial:work': 'Work the editorial task board (own scope)',
   'exam:manage': 'Manage exams & exam versions (own country)',
+  'search:manage': 'Rebuild & inspect the search index',
   'country-config:manage': 'Manage country configuration',
   'language:manage': 'Manage languages',
   'audit:read': 'Read audit trail',

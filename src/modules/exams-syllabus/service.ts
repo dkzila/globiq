@@ -38,6 +38,7 @@ import {
   resolveLocaleContext,
 } from '@/modules/country-locale'
 import type { PublicCountry } from '@/modules/country-locale'
+import { onExamChanged } from '@/modules/search'
 
 import {
   EXAM_EDITABILITY,
@@ -611,6 +612,10 @@ export async function createExam(
     userAgent: meta.userAgent ?? null,
   })
 
+  // P4-S1 §17: keep the index coherent with the lifecycle (no-op for a
+  // DRAFT create — the exam joins the index on activation).
+  await onExamChanged(created.slug)
+
   return toAdminDetail(created)
 }
 
@@ -653,6 +658,9 @@ export async function updateExam(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+
+  // P4-S1 §17: name/organiser/description changes re-project the exam document.
+  await onExamChanged(exam.slug)
 
   return toAdminDetail(updated)
 }
@@ -697,6 +705,10 @@ export async function transitionExam(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+
+  // P4-S1 §17/§36: activation adds the exam to the index (and boosts its
+  // units); deactivation/retirement removes it.
+  await onExamChanged(exam.slug)
 
   return toAdminDetail(updated)
 }
@@ -787,6 +799,11 @@ export async function createExamVersion(
   })
 
   const fresh = await findExam(exam.slug)
+
+  // P4-S1 §17/§36: a new version may change which version is CURRENT — the
+  // exam document and every mapped unit's examRefs are re-projected.
+  await onExamChanged(exam.slug)
+
   return toAdminDetail(fresh ?? exam)
 }
 
@@ -922,6 +939,10 @@ export async function removeExamVersion(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+
+  // P4-S1 §17/§36: removing a future version may reopen the predecessor as
+  // CURRENT — mapped units' examRefs are re-projected.
+  await onExamChanged(exam.slug)
 
   const fresh = await findExam(exam.slug)
   return toAdminDetail(fresh ?? exam)

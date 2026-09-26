@@ -134,6 +134,8 @@ export const AUDIT_ACTIONS = {
   examMappingRemove: 'exam.mapping.remove',
   /** Object-level mapping denials (country/scope/state mismatch — §20 signal). */
   examMappingDenied: 'exam.mapping.denied',
+  /** P4-S1 search index operations (§17/§38 — rebuilds are admin actions). */
+  searchReindex: 'search.reindex',
 } as const
 
 /** Object type vocabulary (§6 entities that exist so far). */
@@ -153,5 +155,6 @@ export const AUDIT_OBJECT_TYPES = {
   examVersion: 'ExamVersion',
   syllabusNode: 'SyllabusNode',
   examMapping: 'ExamMapping',
+  searchDocument: 'SearchDocument',
   permission: 'Permission',
 } as const

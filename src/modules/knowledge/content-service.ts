@@ -37,6 +37,7 @@ import {
   resolveLocaleContext,
 } from '@/modules/country-locale'
 import { getPublicTopic, getTopicIdentity, TaxonomyError } from '@/modules/taxonomy'
+import { onUnitChanged } from '@/modules/search'
 
 import type {
   AdminContentItem,
@@ -495,6 +496,10 @@ async function materializeScheduledItem(itemId: string): Promise<void> {
     after: { status: 'PUBLISHED', revision: nextNumber },
     metadata: { action: 'publish', scheduled: true, materialized: 'lazy-read' },
   })
+
+  // P4-S1 §17/§19: the scheduled release just became a public surface — its
+  // language variant joins the search index now, not on the next full reindex.
+  await onUnitChanged(item.knowledgeUnit.slug)
 }
 
 /**
@@ -1072,6 +1077,10 @@ export async function transitionContentItem(
       userAgent: meta.userAgent ?? null,
     })
 
+    // P4-S1 §17: a published/republished representation re-projects the unit's
+    // documents (new language variant, new title/body text, new freshness).
+    await onUnitChanged(item.knowledgeUnit.slug)
+
     const refreshed = await loadItem(item.id)
     return toAdminItem(actor, refreshed!)
   }
@@ -1166,6 +1175,13 @@ export async function transitionContentItem(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+
+  // P4-S1 §17/§19 step 10: retiring withdraws a public representation — the
+  // unit's documents are re-projected (and a unit whose last representation
+  // in a language retired loses that language's document, §35).
+  if (input.action === 'retire') {
+    await onUnitChanged(item.knowledgeUnit.slug)
+  }
 
   return toAdminItem(actor, updated)
 }

@@ -46,6 +46,7 @@ import {
   type AuditRequestMeta,
 } from '@/modules/audit'
 import { buildCanonicalUrl } from '@/modules/country-locale'
+import { onMappingsChanged } from '@/modules/search'
 import {
   ExamError,
   assertCanManageExam,
@@ -588,6 +589,10 @@ export async function createExamMapping(
     userAgent: meta.userAgent ?? null,
   })
 
+  // P4-S1 §17: a new §8 requirement re-projects the unit's examRefs (boost +
+  // "In the current … syllabus" explanation).
+  await onMappingsChanged([unit.slug])
+
   return refreshMappings(exam.id, version.id)
 }
 
@@ -641,6 +646,10 @@ export async function updateExamMapping(
     userAgent: meta.userAgent ?? null,
   })
 
+  // P4-S1 §17: an edited effective period/depth can change today's
+  // requirements — the unit's examRefs are re-projected.
+  await onMappingsChanged([existing.knowledgeUnit.slug])
+
   return refreshMappings(exam.id, version.id)
 }
 
@@ -679,6 +688,9 @@ export async function removeExamMapping(
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
   })
+
+  // P4-S1 §17: a removed requirement may drop the unit from today's syllabi.
+  await onMappingsChanged([existing.knowledgeUnit.slug])
 
   return refreshMappings(exam.id, version.id)
 }
