@@ -65,4 +65,6 @@ export function checkRateLimit(key: string, { limit, windowMs }: RateLimitOption
 export const RATE_LIMITS = {
   register: { limit: 5, windowMs: 60 * 60 * 1000 }, // 5/hour per IP
   login: { limit: 10, windowMs: 15 * 60 * 1000 }, // 10/15min per IP
+  taxonomyRead: { limit: 60, windowMs: 60 * 1000 }, // public tree/detail/search per IP
+  taxonomyWrite: { limit: 30, windowMs: 60 * 1000 }, // admin taxonomy mutations per IP
 } as const

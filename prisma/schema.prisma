@@ -63,6 +63,27 @@ enum AuthMethod {
   PASSWORD
 }
 
+// P1-S4 (§13): one global taxonomy framework — nodes carry stable IDs,
+// parent/child links, aliases, descriptions, country applicability, language
+// labels and status. Exam names never enter the taxonomy (they map only via
+// SyllabusNode → ExamMapping in P3).
+enum TopicNodeType {
+  DOMAIN // configurable root domain (History, Polity, Economy, …) — §13
+  BRANCH // intermediate grouping node
+  TOPIC // granular teachable/followable topic
+}
+
+enum TopicStatus {
+  ACTIVE
+  INACTIVE // temporarily hidden (e.g. under review)
+  RETIRED // soft-deleted, end-of-life (§36: migration-safe, no hard deletes)
+}
+
+enum TopicScope {
+  GLOBAL // part of the single global framework (§13)
+  COUNTRY // country-specific extension
+}
+
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
 
 // Language is a first-class localisation dimension. `code` is the URL segment
@@ -83,6 +104,8 @@ model Language {
   // Join to countries that support this language
   countryLinks        CountryLanguage[]
   users               User[]
+  topicLabels         TopicLabel[]
+  topicAliases        TopicAlias[]
 
   @@index([status])
 }
@@ -105,6 +128,7 @@ model Country {
   defaultLanguage Language?         @relation("CountryDefaultLanguage", fields: [defaultLanguageId], references: [id])
   supported       CountryLanguage[] // languages configured for this country only (§35)
   users           User[]
+  topics          Topic[] // country-scoped taxonomy extension nodes (§13)
 
   @@index([status])
 }
@@ -172,4 +196,69 @@ model AuthSession {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// ---------- P1-S4: Taxonomy (Master Plan §6 Topic model, §13, §36) ----------
+
+// Canonical taxonomy node — the single global framework with country-specific
+// extensions (§13). `slug` is immutable after creation so URLs stay stable
+// (§16/§36); renames only touch canonicalName/labels. Deletion is always soft
+// (RETIRED) — taxonomy changes must be migration-safe (§36).
+model Topic {
+  id            String        @id @default(cuid())
+  slug          String        @unique // immutable, URL-stable, kebab-case
+  canonicalName String
+  description   String? // canonical (English-reference) description
+  type          TopicNodeType
+  status        TopicStatus   @default(ACTIVE)
+  scope         TopicScope    @default(GLOBAL)
+  countryId     String? // set iff scope = COUNTRY (explicit, never inferred — §14)
+  parentId      String?
+  orderIndex    Int           @default(0) // stable sibling ordering
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  parent   Topic?       @relation("TopicTree", fields: [parentId], references: [id])
+  children Topic[]      @relation("TopicTree")
+  country  Country?     @relation(fields: [countryId], references: [id])
+  labels   TopicLabel[]
+  aliases  TopicAlias[]
+
+  @@index([parentId, orderIndex])
+  @@index([status])
+  @@index([scope, countryId])
+}
+
+// Localised name/description per language (§13 "language labels"). The
+// canonical record stays single — labels are rendering dimensions (§35).
+model TopicLabel {
+  id          String   @id @default(cuid())
+  topicId     String
+  languageId  String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  topic    Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  language Language @relation(fields: [languageId], references: [id])
+
+  @@unique([topicId, languageId])
+  @@index([languageId])
+}
+
+// Alternate search terms (§13 "aliases") — e.g. "FR" → Fundamental Rights.
+// languageId null = language-neutral alias.
+model TopicAlias {
+  id         String    @id @default(cuid())
+  topicId    String
+  value      String
+  languageId String?
+  createdAt  DateTime  @default(now())
+
+  topic    Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  language Language? @relation(fields: [languageId], references: [id])
+
+  @@unique([topicId, value])
+  @@index([languageId])
 }

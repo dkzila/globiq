@@ -1,7 +1,8 @@
 /**
- * GET  /api/languages — admin: platform language table (§38 admin surface;
- *   public consumers must discover languages via /api/countries, never a
- *   global list — §35).
+ * GET  /api/languages — privileged staff: platform language table (§38 admin
+ *   surface; public consumers must discover languages via /api/countries,
+ *   never a global list — §35). COUNTRY_ADMIN needs the read for taxonomy
+ *   label editing (P1-S4); writes stay ADMIN-only.
  * POST /api/languages — admin: add a language to the platform.
  */
 import { NextResponse } from 'next/server'
@@ -19,7 +20,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  const auth = await requireRole(request, ['ADMIN'])
+  const auth = await requireRole(request, ['ADMIN', 'COUNTRY_ADMIN'])
   if (auth instanceof NextResponse) return auth
 
   try {
