@@ -87,6 +87,17 @@ export const AUDIT_ACTIONS = {
   contentItemCreate: 'content.item.create',
   contentItemUpdate: 'content.item.update',
   contentItemTransition: 'content.item.transition',
+  sourceCreate: 'source.create',
+  sourceUpdate: 'source.update',
+  sourceVerify: 'source.verification.transition',
+  /** Object-level source-registry denials (role/scope mismatch — §20 signal). */
+  sourceDenied: 'source.denied',
+  /** §24 provenance join events on content objects. */
+  sourceLinkCreate: 'content.item.source.link',
+  sourceLinkUpdate: 'content.item.source.update',
+  sourceLinkRemove: 'content.item.source.unlink',
+  /** Object-level source-link denials (item country/scope mismatch — §20 signal). */
+  sourceLinkDenied: 'content.item.source.denied',
   /** Route permission-gate denials (requirePermission). */
   accessDenied: 'access.denied',
   /** Object-level taxonomy denials (country/scope mismatch — §20 signal). */
@@ -107,5 +118,7 @@ export const AUDIT_OBJECT_TYPES = {
   knowledgeUnit: 'KnowledgeUnit',
   contentItem: 'ContentItem',
   contentRevision: 'ContentRevision',
+  source: 'Source',
+  contentSourceLink: 'ContentSourceLink',
   permission: 'Permission',
 } as const

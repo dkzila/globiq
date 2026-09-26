@@ -13,6 +13,8 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   AlertCircle,
   ArrowLeft,
+  BookMarked,
+  Bot,
   CircleDot,
   FileText,
   History,
@@ -32,6 +34,19 @@ interface Envelope<T> {
   status: 'ok' | 'error'
   data?: T
   error?: { code: string; message: string }
+}
+
+interface PublicSource {
+  id: string
+  title: string
+  publisher: string
+  url: string
+  type: string
+  verification: 'UNVERIFIED' | 'VERIFIED' | 'UNRELIABLE'
+  publishedAt: string | null
+  retrievedAt: string
+  verifiedAt: string | null
+  claim: string | null
 }
 
 interface PublicItem {
@@ -60,6 +75,8 @@ interface ListResult {
 interface DetailResult extends PublicItem {
   body: string
   revisionCount: number
+  aiAssisted: boolean
+  sources: PublicSource[]
   unit: {
     slug: string
     canonicalName: string
@@ -69,6 +86,12 @@ interface DetailResult extends PublicItem {
     scope: string
     countryIso: string | null
   }
+}
+
+const verificationStyle: Record<string, string> = {
+  UNVERIFIED: 'border-zinc-200 bg-zinc-50 text-zinc-600',
+  VERIFIED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  UNRELIABLE: 'border-red-200 bg-red-50 text-red-700',
 }
 
 const formatStyle: Record<string, string> = {
@@ -187,6 +210,70 @@ export function ContentExplorer({ country, language, unit }: ExplorerProps) {
           <div className="globiq-scroll mt-4 max-h-80 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-zinc-700">
             {detail.body}
           </div>
+
+          {/* §24 provenance — sources & verification states (public trust surface) */}
+          <div className="mt-4 border-t border-zinc-100 pt-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700">
+              <BookMarked className="h-3.5 w-3.5" aria-hidden="true" />
+              Sources &amp; provenance (§24)
+              {detail.sources.length > 0 && (
+                <span className="font-normal text-zinc-400">· {detail.sources.length} cited</span>
+              )}
+            </p>
+            {detail.sources.length === 0 ? (
+              <p className="mt-1.5 text-xs text-zinc-500">
+                No sources attached to this item yet — provenance appears here as soon as editors cite
+                evidence.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-2" role="list">
+                {detail.sources.map((source) => (
+                  <li key={source.id} className="rounded-md border border-zinc-100 bg-zinc-50/60 p-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline" className={`text-[10px] font-normal ${verificationStyle[source.verification] ?? ''}`}>
+                        {source.verification}
+                      </Badge>
+                      {source.claim ? (
+                        <Badge variant="outline" className="border-zinc-200 bg-white text-[10px] font-normal text-zinc-500">
+                          claim-level
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-zinc-200 bg-white text-[10px] font-normal text-zinc-500">
+                          content-level
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-xs font-semibold leading-snug">{source.title}</p>
+                    <p className="mt-0.5 text-[11px] text-zinc-500">
+                      {source.publisher}
+                      {source.publishedAt && ` · published ${new Date(source.publishedAt).toLocaleDateString()}`}
+                      {' '}· retrieved {new Date(source.retrievedAt).toLocaleDateString()}
+                      {source.verifiedAt && ` · editor-verified ${new Date(source.verifiedAt).toLocaleDateString()}`}
+                    </p>
+                    {source.claim && (
+                      <p className="mt-1 text-[11px] italic text-zinc-500">supports: {source.claim}</p>
+                    )}
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 block break-all text-[11px] font-medium text-emerald-700 hover:text-emerald-800"
+                    >
+                      {source.url}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {detail.aiAssisted && (
+              <p className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                <Bot className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                This revision was drafted with AI assistance — published through the human editorial
+                review gate, with the provenance flag frozen on the revision (§26).
+              </p>
+            )}
+          </div>
+
           <p className="mt-4 text-xs text-zinc-400">
             Served from the live revision (published{' '}
             {new Date(detail.revision.publishedAt).toLocaleDateString()})

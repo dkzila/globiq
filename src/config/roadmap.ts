@@ -16,8 +16,8 @@ export interface Phase {
 
 export const PHASES: Phase[] = [
   { id: 'P0', title: 'Design Freeze', scope: 'Scope, domain model, URLs, RBAC, API conventions', sessions: 5, status: 'done' },
-  { id: 'P1', title: 'Foundation', scope: 'Project, auth, country/language, taxonomy, audit', sessions: 5, status: 'current' },
-  { id: 'P2', title: 'Knowledge & Editorial', scope: 'KnowledgeUnits, content, sources, editorial workflow', sessions: 5, status: 'upcoming' },
+  { id: 'P1', title: 'Foundation', scope: 'Project, auth, country/language, taxonomy, audit', sessions: 5, status: 'done' },
+  { id: 'P2', title: 'Knowledge & Editorial', scope: 'KnowledgeUnits, content, sources, editorial workflow', sessions: 5, status: 'current' },
   { id: 'P3', title: 'Exams & Combination Engine', scope: 'Exams, syllabus, mappings, multi-exam union', sessions: 5, status: 'upcoming' },
   { id: 'P4', title: 'Search, SEO & Homepages', scope: 'Search, country homepages, sitemaps', sessions: 5, status: 'upcoming' },
   { id: 'P5', title: 'Personalisation', scope: 'Follows, saves, goals, dashboard', sessions: 5, status: 'upcoming' },

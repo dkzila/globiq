@@ -103,6 +103,9 @@ export const createContentItemSchema = z
     format: z.enum(CONTENT_FORMATS),
     title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200),
     body: z.string().trim().min(1, 'Body is required'),
+    /** §24/§26 AI-provenance flag — marks AI-assisted drafting; snapshotted
+     * onto the published revision (§26 review gate = the workflow itself). */
+    aiAssisted: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     const check = bodyFitsFormat(data.format, data.body)
@@ -116,6 +119,7 @@ export type CreateContentItemInput = z.infer<typeof createContentItemSchema>
 export const updateContentItemSchema = z.object({
   title: z.string().trim().min(3).max(200).optional(),
   body: z.string().trim().min(1).optional(),
+  aiAssisted: z.boolean().optional(),
   // Format rules are re-checked in the service against the item's IMMUTABLE
   // format — the patch alone doesn't know which format it belongs to.
 })

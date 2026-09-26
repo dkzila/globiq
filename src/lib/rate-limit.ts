@@ -72,4 +72,6 @@ export const RATE_LIMITS = {
   knowledgeWrite: { limit: 30, windowMs: 60 * 1000 }, // admin knowledge mutations per IP
   contentRead: { limit: 60, windowMs: 60 * 1000 }, // public content list/detail per IP
   contentWrite: { limit: 30, windowMs: 60 * 1000 }, // admin content mutations per IP
+  sourceRead: { limit: 60, windowMs: 60 * 1000 }, // admin source registry reads per IP
+  sourceWrite: { limit: 30, windowMs: 60 * 1000 }, // source registry + link mutations per IP
 } as const

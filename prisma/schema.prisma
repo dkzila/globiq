@@ -190,6 +190,30 @@ enum ContentStatus {
   RETIRED // withdrawn/archived end-of-life (§19 step 10) — read-only, like ARCHIVED
 }
 
+// ---------- P2-S3: Source & provenance (Master Plan §6 Source row, §24, §26) ----------
+
+// §24 "source category" (the §6 Source row calls it "source type") — what kind
+// of evidence the record points at. Configurable vocabulary; these values are
+// the launch set.
+enum SourceType {
+  OFFICIAL // government/constitutional/official-body material (PIB, ISRO, judgments)
+  NEWS_MEDIA // newspapers, wires, broadcast reporting
+  INSTITUTIONAL // institutional reports & repositories (UN, World Bank, RBI)
+  ACADEMIC // journals, books, scholarly work
+  DATA // statistical databases and datasets
+  OTHER
+}
+
+// §24 "Editor verification state" — the editorial trust decision on a piece
+// of evidence. Sources are never deleted (§36 migration-safe philosophy):
+// a bad source is marked UNRELIABLE, and its links remain as preserved
+// provenance history.
+enum SourceVerification {
+  UNVERIFIED // recorded, not yet editor-checked
+  VERIFIED // an editor confirmed the evidence (verifiedAt set)
+  UNRELIABLE // flagged unreliable/retracted — trust revoked
+}
+
 // The publishable representation (§7): one KnowledgeUnit's truth rendered in
 // ONE language and ONE format. Identity (unit + language + format) is
 // immutable post-create — the same migration-safe philosophy as the KU slug.
@@ -204,6 +228,10 @@ model ContentItem {
   status         ContentStatus @default(DRAFT)
   title          String // working copy (current editing state)
   body           String // working copy — public reads never touch this
+  // §24/§26 AI-provenance flag (working copy): marks AI-assisted drafting.
+  // Snapshotted onto ContentRevision at publish time so every immutable
+  // revision carries its own provenance.
+  aiAssisted     Boolean       @default(false)
   publishedRevisionId String? // live revision pointer (null = never published)
   createdById    String?
   createdAt      DateTime      @default(now())
@@ -214,6 +242,7 @@ model ContentItem {
   createdBy        User?            @relation("ContentItemAuthor", fields: [createdById], references: [id], onDelete: SetNull)
   revisions        ContentRevision[] @relation("ContentItemRevisions")
   publishedRevision ContentRevision? @relation("LiveContentRevision", fields: [publishedRevisionId], references: [id])
+  sourceLinks      ContentSourceLink[]
 
   // One representation per (unit, language, format) — the §7/§11 canonical-
   // identity rule applied to representations: never duplicate the same
@@ -235,6 +264,10 @@ model ContentRevision {
   title         String // immutable snapshot at publish time
   body          String // immutable snapshot at publish time
   changeSummary String? // why this revision exists (required on re-publish)
+  // §24/§26 AI-provenance snapshot at publish time — immutable like the rest
+  // of the revision ("any AI-generated field that affects factual publishing
+  // carries provenance/status metadata").
+  aiAssisted    Boolean  @default(false)
   publishedById String?
   publishedAt   DateTime @default(now())
 
@@ -244,6 +277,57 @@ model ContentRevision {
 
   @@unique([contentItemId, revisionNumber])
   @@index([contentItemId, publishedAt])
+}
+
+// Evidence/provenance record (§6 Source row, §24): one canonical row per
+// normalized URL — two content objects citing the same URL share the SAME
+// Source record (the §11 dedup philosophy applied to evidence). Metadata
+// corrections are edits to the record; the verification workflow is a small
+// state machine (UNVERIFIED → VERIFIED/UNRELIABLE, re-checkable) owned by
+// source-service.ts. Sources are platform-level shared evidence — country
+// scope is enforced on the LINK (which content may cite it), never on the
+// record itself.
+model Source {
+  id           String            @id @default(cuid())
+  title        String // human label, e.g. "ISRO — Chandrayaan-3 soft-landing update"
+  publisher    String // §24 publisher/name, e.g. "ISRO", "The Hindu"
+  url          String            @unique // normalized — one record per URL
+  type         SourceType
+  verification SourceVerification @default(UNVERIFIED)
+  publishedAt  DateTime? // when the underlying material was published (§24)
+  retrievedAt  DateTime // when GlobIQ editors retrieved it (§24)
+  verifiedAt   DateTime? // when an editor verified it (§24 — set on 'verify')
+  notes        String? // internal editorial notes
+  createdById  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  createdBy User?               @relation("SourceAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  links     ContentSourceLink[]
+
+  @@index([type])
+  @@index([verification])
+  @@index([publisher])
+}
+
+// §24 "Claim-level or content-level attribution where needed": the join
+// between a publishable representation and its evidence. `claim` null = the
+// source backs the whole item (content-level); a string = it backs that
+// specific claim. Links are live provenance metadata on the item — every
+// attach/detach/edit is audited, and public reads expose current links with
+// each source's verification state (the §24 transparency surface).
+model ContentSourceLink {
+  id            String   @id @default(cuid())
+  contentItemId String
+  sourceId      String
+  claim         String? // claim-level attribution (§24); null = content-level
+  createdAt     DateTime @default(now())
+
+  contentItem ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  source      Source      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([contentItemId, sourceId])
+  @@index([sourceId])
 }
 
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
@@ -340,6 +424,7 @@ model User {
   authoredKnowledgeUnits KnowledgeUnit[] @relation("KnowledgeUnitAuthor")
   authoredContentItems   ContentItem[] @relation("ContentItemAuthor")
   publishedContentRevisions ContentRevision[] @relation("ContentRevisionPublisher")
+  createdSources         Source[] @relation("SourceAuthor")
 
   @@index([homeCountryId])
   @@index([preferredLanguageId])

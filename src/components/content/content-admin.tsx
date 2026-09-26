@@ -16,6 +16,8 @@ import {
   AlertCircle,
   Archive,
   BadgeCheck,
+  BookMarked,
+  Bot,
   ChevronDown,
   ChevronRight,
   Clock8,
@@ -74,6 +76,7 @@ interface RevisionRef {
   title: string
   body: string
   changeSummary: string | null
+  aiAssisted: boolean
   publishedAt: string
   publishedBy: string | null
 }
@@ -96,6 +99,8 @@ interface AdminItem {
   }
   liveRevision: RevisionRef | null
   revisionCount: number
+  aiAssisted: boolean
+  sourceCount: number
   createdAt: string
   updatedAt: string
   canEdit: boolean
@@ -183,9 +188,12 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
 
   // Create form.
   const [createOpen, setCreateOpen] = useState(false)
-  const [createForm, setCreateForm] = useState({ format: 'FACT_CARD', language: '', title: '', body: '' })
+  const [createForm, setCreateForm] = useState({ format: 'FACT_CARD', language: '', title: '', body: '', aiAssisted: false })
   const [createErrors, setCreateErrors] = useState<Record<string, string[]> | null>(null)
   const [creating, setCreating] = useState(false)
+
+  // §24/§26 AI-provenance toggle (working copy — snapshotted at publish).
+  const [aiToggleBusy, setAiToggleBusy] = useState(false)
 
   // Revision history (query-keyed — keyed to the selected item + a refresh tick).
   const [historyTick, setHistoryTick] = useState(0)
@@ -267,6 +275,35 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
       : selected
         ? { key: selected.id, title: selected.title, body: selected.body }
         : null
+
+  // §24/§26 AI-provenance toggle (working copy — snapshotted at publish).
+  const toggleAiAssisted = useCallback(async () => {
+    if (!token || !selected || !selected.canEdit) return
+    setAiToggleBusy(true)
+    try {
+      const response = await fetch(`/api/content/admin/items/${selected.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiAssisted: !selected.aiAssisted }),
+      })
+      const payload = (await response.json()) as Envelope<{ item: AdminItem }>
+      if (payload.status === 'ok' && payload.data) {
+        setItems((current) =>
+          current ? current.map((entry) => (entry.id === payload.data!.item.id ? payload.data!.item : entry)) : current
+        )
+        toast({
+          title: payload.data.item.aiAssisted ? 'Marked AI-assisted' : 'AI-assist flag cleared',
+          description: 'Working-copy state — frozen onto the next published revision (§26).',
+        })
+      } else {
+        toast({ title: 'Could not update', description: apiError(payload), variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Network error', variant: 'destructive' })
+    } finally {
+      setAiToggleBusy(false)
+    }
+  }, [token, selected, toast])
 
   // Revision history loads when opened (and after each publish).
   useEffect(() => {
@@ -383,7 +420,7 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
       if (payload.status === 'ok' && payload.data) {
         setItems((current) => [payload.data!.item, ...(current ?? [])])
         setCreateOpen(false)
-        setCreateForm({ format: 'FACT_CARD', language: createForm.language, title: '', body: '' })
+        setCreateForm({ format: 'FACT_CARD', language: createForm.language, title: '', body: '', aiAssisted: false })
         toast({ title: 'Representation created', description: 'Entered DRAFT — submit for review, then publish.' })
         setSelectedId(payload.data.item.id)
       } else {
@@ -536,6 +573,15 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
               />
               {createErrors?.title && <p className="text-xs text-red-600">{createErrors.title[0]}</p>}
             </div>
+            <label className="flex min-h-[32px] cursor-pointer items-center gap-2 rounded-md border border-zinc-100 bg-zinc-50/60 px-2.5 py-1.5 text-xs text-zinc-600">
+              <input
+                type="checkbox"
+                checked={createForm.aiAssisted}
+                onChange={(event) => setCreateForm((form) => ({ ...form, aiAssisted: event.target.checked }))}
+                className="h-4 w-4 rounded border-zinc-300 accent-emerald-600"
+              />
+              Drafted with AI assistance (§26 — provenance flag on every published revision)
+            </label>
             <div className="space-y-1.5">
               <UILabel htmlFor="content-create-body" className="text-xs text-zinc-500">Body</UILabel>
               <Textarea
@@ -607,6 +653,18 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
                       {item.revisionCount} revision{item.revisionCount === 1 ? '' : 's'}
                     </Badge>
                   )}
+                  {item.sourceCount > 0 && (
+                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-700">
+                      <BookMarked className="mr-1 h-3 w-3" aria-hidden="true" />
+                      {item.sourceCount} source{item.sourceCount === 1 ? '' : 's'}
+                    </Badge>
+                  )}
+                  {item.aiAssisted && (
+                    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] font-normal text-amber-700">
+                      <Bot className="mr-1 h-3 w-3" aria-hidden="true" />
+                      AI-assisted
+                    </Badge>
+                  )}
                   {!item.canEdit && (
                     <Badge variant="outline" className="border-zinc-200 bg-zinc-50 text-[10px] font-normal text-zinc-400">
                       read-only
@@ -641,6 +699,18 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
               <Badge variant="secondary" className="font-normal">
                 {selected.language.nativeName ?? selected.language.name} ({selected.language.code})
               </Badge>
+              {selected.sourceCount > 0 && (
+                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 font-normal text-emerald-700">
+                  <BookMarked className="mr-1 h-3 w-3" aria-hidden="true" />
+                  {selected.sourceCount} source{selected.sourceCount === 1 ? '' : 's'} (§24)
+                </Badge>
+              )}
+              {selected.aiAssisted && (
+                <Badge variant="outline" className="border-amber-200 bg-amber-50 font-normal text-amber-700">
+                  <Bot className="mr-1 h-3 w-3" aria-hidden="true" />
+                  AI-assisted (§26)
+                </Badge>
+              )}
               <span className="text-xs text-zinc-400">of {selected.unit.canonicalName}</span>
             </div>
             <Badge variant="outline" className="border-zinc-200 bg-zinc-50 font-normal text-zinc-500">
@@ -718,6 +788,23 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
                 }
               />
             </div>
+            {/* §24/§26 AI-provenance toggle — working-copy state, snapshotted at publish */}
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-zinc-100 bg-zinc-50/60 px-2.5 py-2">
+              <label className="flex min-h-[32px] cursor-pointer items-center gap-2 text-xs text-zinc-600">
+                <input
+                  type="checkbox"
+                  checked={selected.aiAssisted}
+                  onChange={() => void toggleAiAssisted()}
+                  disabled={!selected.canEdit || aiToggleBusy}
+                  className="h-4 w-4 rounded border-zinc-300 accent-emerald-600"
+                />
+                {aiToggleBusy ? 'Saving…' : 'Drafted with AI assistance (§26 provenance)'}
+              </label>
+              <span className="text-[10px] text-zinc-400">
+                Frozen onto the published revision — readers see the flag on the live snapshot.
+              </span>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
@@ -852,6 +939,12 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
                           <Clock8 className="h-3 w-3" aria-hidden="true" />
                           {new Date(revision.publishedAt).toLocaleString()}
                         </span>
+                        {revision.aiAssisted && (
+                          <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[9px] font-normal text-amber-700">
+                            <Bot className="mr-0.5 h-2.5 w-2.5" aria-hidden="true" />
+                            AI
+                          </Badge>
+                        )}
                         {expandedRevision === revision.revisionNumber ? (
                           <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
                         ) : (

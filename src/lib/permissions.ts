@@ -30,6 +30,7 @@ export type Permission =
   | 'taxonomy:manage' // create/update/retire taxonomy nodes (country-scoped for COUNTRY_ADMIN)
   | 'knowledge:manage' // create/edit/transition KnowledgeUnits (country-scoped for COUNTRY_ADMIN)
   | 'content:manage' // create/edit/publish ContentItems + revisions (country-scoped for COUNTRY_ADMIN; WRITER lands P2-S4)
+  | 'source:manage' // create/edit/verify Source evidence records (§24 — platform-level registry; link/unlink rides content:manage on the item)
   | 'country-config:manage' // platform country configuration (ADMIN only — §14/§38)
   | 'language:manage' // platform language registry (ADMIN only — §35)
   | 'audit:read' // read the accountability trail (ADMIN only in P1)
@@ -71,13 +72,17 @@ const ROLE_CATEGORY_GRANTS: Record<UserRole, Permission[]> = {
     'taxonomy:manage',
     'knowledge:manage',
     'content:manage',
+    'source:manage',
     'country-config:manage',
     'language:manage',
     'audit:read',
     'sessions:manage-own',
   ],
-  COUNTRY_ADMIN: ['taxonomy:manage', 'knowledge:manage', 'content:manage', 'sessions:manage-own'],
-  WRITER: ['sessions:manage-own'],
+  // Sources are platform-level shared evidence (§24) — the record itself is
+  // never country-scoped. Country scope is enforced on the LINK (which content
+  // may cite it), which rides content:manage + the item's unit-country target.
+  COUNTRY_ADMIN: ['taxonomy:manage', 'knowledge:manage', 'content:manage', 'source:manage', 'sessions:manage-own'],
+  WRITER: ['sessions:manage-own'], // source/content grants land with P2-S4 editorial scopes
   READER: ['sessions:manage-own'],
 }
 
@@ -96,12 +101,18 @@ export function can(
 
   // COUNTRY_ADMIN: the country-scoped permissions — taxonomy (P1-S4), knowledge
   // (P2-S1) and content (P2-S2) follow the same object-level narrowing rule.
+  // source:manage (P2-S3) is platform-level: Source records are shared evidence
+  // with no country dimension (§24), so the category grant passes WITHOUT
+  // object-level narrowing — country scope applies on the LINK instead (a
+  // content-item operation gated by content:manage + the unit's country).
   if (
     actor.role === 'COUNTRY_ADMIN' &&
     (permission === 'taxonomy:manage' ||
       permission === 'knowledge:manage' ||
-      permission === 'content:manage')
+      permission === 'content:manage' ||
+      permission === 'source:manage')
   ) {
+    if (permission === 'source:manage') return true
     if (!target) return true // category gate — object checks still apply
     return target.countryId != null && target.countryId === actor.countryId
   }
@@ -137,6 +148,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'taxonomy:manage': 'Manage taxonomy (own country)',
   'knowledge:manage': 'Manage knowledge units (own country)',
   'content:manage': 'Manage content items & revisions (own country)',
+  'source:manage': 'Manage source evidence & verification (§24)',
   'country-config:manage': 'Manage country configuration',
   'language:manage': 'Manage languages',
   'audit:read': 'Read audit trail',

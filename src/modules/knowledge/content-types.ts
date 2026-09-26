@@ -8,6 +8,8 @@
  * versions; corrections are never silent edits), §37 (client-agnostic DTOs).
  */
 
+import type { PublicSourceRef } from './source-types'
+
 /** §23 representation formats (HOW the canonical record renders). */
 export type ContentFormatPublic =
   | 'FACT_CARD'
@@ -64,6 +66,8 @@ export interface ContentRevisionRef {
   title: string
   body: string
   changeSummary: string | null
+  /** §24/§26 AI-provenance snapshot — immutable like the rest of the revision. */
+  aiAssisted: boolean
   publishedAt: string
   publishedBy: string | null // publisher email snapshot
 }
@@ -82,6 +86,10 @@ export interface PublicContentItemSummary {
 export interface PublicContentItemDetail extends PublicContentItemSummary {
   body: string
   revisionCount: number
+  /** §24/§26 provenance snapshot of the LIVE revision (what readers see). */
+  aiAssisted: boolean
+  /** §24 provenance — current evidence links, each with its verification state. */
+  sources: PublicSourceRef[]
   /** The canonical record this item represents (§7 — the link is mandatory). */
   unit: {
     slug: string
@@ -129,6 +137,11 @@ export interface AdminContentItem {
   }
   liveRevision: ContentRevisionRef | null
   revisionCount: number
+  /** §24/§26 AI-provenance flag — working-copy state (snapshotted at publish). */
+  aiAssisted: boolean
+  /** How many evidence links currently back this item (§24) — details via
+   * /api/content/admin/items/{id}/sources. */
+  sourceCount: number
   createdAt: string
   updatedAt: string
   /** Per-item affordances from server truth (§20/§37) — server re-checks. */
@@ -159,3 +172,6 @@ export interface AdminContentRevisionListResult {
   format: ContentFormatPublic
   revisions: ContentRevisionRef[]
 }
+
+// §24 provenance types are re-exported through the module index alongside the
+// content DTOs (see source-types.ts).

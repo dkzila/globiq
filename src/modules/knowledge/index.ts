@@ -7,6 +7,9 @@
  * P2-S1: KnowledgeUnit — the canonical semantic record (§7).
  * P2-S2: ContentItem + revisions — publishable representations of that record
  *        (one language × one format each), with immutable published snapshots.
+ * P2-S3: Source & provenance — the §24 trust model: evidence records with an
+ *        editor verification workflow, claim/content-level citation links on
+ *        content objects, and AI-provenance flags (§26).
  */
 export {
   KnowledgeError,
@@ -101,3 +104,52 @@ export {
   CONTENT_TRANSITIONS,
   CONTENT_EDITABILITY,
 } from './content-types'
+
+// ---------- P2-S3: Source & provenance (§24/§26) ----------
+export {
+  SourceError,
+  toSourceErrorResponse,
+  getAdminSources,
+  getAdminSource,
+  createSource,
+  updateSource,
+  transitionSourceVerification,
+  listContentSources,
+  linkSourceToItem,
+  updateContentSourceClaim,
+  unlinkSourceFromItem,
+} from './source-service'
+export {
+  createSourceSchema,
+  updateSourceSchema,
+  sourceVerificationSchema,
+  adminSourceListQuerySchema,
+  linkSourceSchema,
+  updateSourceLinkSchema,
+  normalizeSourceUrl,
+} from './source-validation'
+export type {
+  CreateSourceInput,
+  UpdateSourceInput,
+  SourceVerificationInput,
+  AdminSourceListQuery,
+  LinkSourceInput,
+  UpdateSourceLinkInput,
+} from './source-validation'
+export type {
+  AdminContentSourceLink,
+  AdminContentSourceListResult,
+  AdminSource,
+  AdminSourceDetail,
+  AdminSourceListResult,
+  AdminSourceUsage,
+  PublicSourceRef,
+  SourceTypePublic,
+  SourceVerificationAction,
+  SourceVerificationPublic,
+} from './source-types'
+export {
+  SOURCE_TYPES,
+  SOURCE_VERIFICATIONS,
+  SOURCE_VERIFICATION_TRANSITIONS,
+} from './source-types'

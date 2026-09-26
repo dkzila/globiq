@@ -51,6 +51,7 @@ import type {
   PublicContentListResult,
 } from './content-types'
 import { CONTENT_EDITABILITY, CONTENT_TRANSITIONS } from './content-types'
+import { getPublicSourcesForItem } from './source-service'
 import type {
   AdminContentListQuery,
   ContentTransitionInput,
@@ -128,9 +129,17 @@ type ItemRow = Prisma.ContentItemGetPayload<{
     knowledgeUnit: true
     language: true
     publishedRevision: { include: { publishedBy: true } }
-    _count: { select: { revisions: true } }
+    _count: { select: { revisions: true; sourceLinks: true } }
   }
 }>
+
+/** The provenance-bearing include used by every item read (§24). */
+const ITEM_INCLUDE = {
+  knowledgeUnit: true,
+  language: true,
+  publishedRevision: { include: { publishedBy: true } },
+  _count: { select: { revisions: true, sourceLinks: true } },
+} satisfies Prisma.ContentItemInclude
 
 async function loadUnitByRef(ref: string): Promise<KnowledgeUnit | null> {
   return db.knowledgeUnit.findFirst({
@@ -142,12 +151,7 @@ async function loadItem(id: string): Promise<ItemRow | null> {
   if (!CUID_PATTERN.test(id)) return null
   return db.contentItem.findUnique({
     where: { id },
-    include: {
-      knowledgeUnit: true,
-      language: true,
-      publishedRevision: { include: { publishedBy: true } },
-      _count: { select: { revisions: true } },
-    },
+    include: ITEM_INCLUDE,
   })
 }
 
@@ -165,6 +169,7 @@ function snapshotOf(item: ItemRow) {
     status: item.status,
     title: item.title,
     body: item.body,
+    aiAssisted: item.aiAssisted,
     liveRevision: item.publishedRevision
       ? { number: item.publishedRevision.revisionNumber, title: item.publishedRevision.title }
       : null,
@@ -234,6 +239,7 @@ function toRevisionRef(
     title: revision.title,
     body: revision.body,
     changeSummary: revision.changeSummary,
+    aiAssisted: revision.aiAssisted,
     publishedAt: revision.publishedAt.toISOString(),
     publishedBy: revision.publishedBy?.email ?? null,
   }
@@ -265,6 +271,8 @@ async function toAdminItem(actor: Actor, item: ItemRow): Promise<AdminContentIte
     },
     liveRevision: item.publishedRevision ? toRevisionRef(item.publishedRevision) : null,
     revisionCount: item._count.revisions,
+    aiAssisted: item.aiAssisted,
+    sourceCount: item._count.sourceLinks,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
     canEdit: canManage && editability !== 'none',
@@ -382,12 +390,7 @@ export async function getPublicContentItems(
       publishedRevisionId: { not: null },
       languageId: { in: requestedLanguageId ? [requestedLanguageId] : languageIds },
     },
-    include: {
-      language: true,
-      publishedRevision: { include: { publishedBy: true } },
-      knowledgeUnit: true,
-      _count: { select: { revisions: true } },
-    },
+    include: ITEM_INCLUDE,
   })
 
   // All configured languages that carry at least one published representation
@@ -453,11 +456,17 @@ export async function getPublicContentItem(
   if (!summary) throw new ContentError('CONTENT_NOT_FOUND', 'Content not found')
 
   const topic = await getTopicIdentity(unit.topicId)
+  // §24 provenance surface: current evidence links with verification states.
+  // Provenance rides the already-verified visibility chain above.
+  const sources = await getPublicSourcesForItem(item.id)
 
   return {
     ...summary,
     body: item.publishedRevision.body,
     revisionCount: item._count.revisions,
+    // §24/§26 — the live revision's immutable AI-provenance snapshot.
+    aiAssisted: item.publishedRevision.aiAssisted,
+    sources,
     unit: {
       slug: unit.slug,
       canonicalName: unit.canonicalName,
@@ -521,12 +530,7 @@ export async function getAdminContentItems(
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], // deterministic (§37)
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
-      include: {
-        knowledgeUnit: true,
-        language: true,
-        publishedRevision: { include: { publishedBy: true } },
-        _count: { select: { revisions: true } },
-      },
+      include: ITEM_INCLUDE,
     }),
     db.contentItem.count({ where }),
   ])
@@ -671,14 +675,10 @@ export async function createContentItem(
       status: 'DRAFT',
       title: input.title,
       body: input.body,
+      aiAssisted: input.aiAssisted ?? false,
       createdById: actor.userId,
     },
-    include: {
-      knowledgeUnit: true,
-      language: true,
-      publishedRevision: { include: { publishedBy: true } },
-      _count: { select: { revisions: true } },
-    },
+    include: ITEM_INCLUDE,
   })
 
   await recordAudit({
@@ -728,13 +728,9 @@ export async function updateContentItem(
     data: {
       ...(input.title !== undefined ? { title } : {}),
       ...(input.body !== undefined ? { body } : {}),
+      ...(input.aiAssisted !== undefined ? { aiAssisted: input.aiAssisted } : {}),
     },
-    include: {
-      knowledgeUnit: true,
-      language: true,
-      publishedRevision: { include: { publishedBy: true } },
-      _count: { select: { revisions: true } },
-    },
+    include: ITEM_INCLUDE,
   })
 
   await recordAudit({
@@ -824,6 +820,8 @@ export async function transitionContentItem(
           revisionNumber,
           title: item.title,
           body: item.body,
+          // §24/§26 — the revision freezes the AI-provenance flag at publish time.
+          aiAssisted: item.aiAssisted,
           changeSummary: input.changeSummary?.trim() ?? null,
           publishedById: actor.userId,
         },
@@ -848,6 +846,7 @@ export async function transitionContentItem(
         revisionNumber: nextNumber,
         changeSummary: input.changeSummary?.trim() ?? null,
         republished: isRepublish,
+        aiAssisted: item.aiAssisted,
       },
       ip: meta.ip ?? null,
       userAgent: meta.userAgent ?? null,
@@ -861,12 +860,7 @@ export async function transitionContentItem(
   const updated = await db.contentItem.update({
     where: { id: item.id },
     data: { status: target },
-    include: {
-      knowledgeUnit: true,
-      language: true,
-      publishedRevision: { include: { publishedBy: true } },
-      _count: { select: { revisions: true } },
-    },
+    include: ITEM_INCLUDE,
   })
 
   await recordAudit({

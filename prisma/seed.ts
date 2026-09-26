@@ -1,5 +1,5 @@
 /**
- * GlobIQ — P1-S1 + P1-S2 + P1-S4 + P2-S1 + P2-S2 Seed
+ * GlobIQ — P1-S1 + P1-S2 + P1-S4 + P2-S1 + P2-S2 + P2-S3 Seed
  * Master Plan §45 (Seed Data Strategy): intentionally small but structurally rich.
  *
  * P1-S1 scope: languages + countries (India = default root market, English default).
@@ -13,7 +13,6 @@
  * P1-S4 scope: a few structurally rich taxonomy branches (§45) — global domains,
  * country-scoped extensions (IN), nested branch→topic nodes, en/hi labels and
  * aliases — plus one dev COUNTRY_ADMIN (IN) to exercise scoped RBAC (§38).
- * Re-seeding never overwrites admin edits made through the CRUD APIs (§36).
  *
  * P2-S1 scope: structurally rich knowledge units (§45) — types, difficulties,
  * scopes, lifecycle statuses (one DRAFT for the transition demo).
@@ -21,6 +20,11 @@
  * P2-S2 scope: ContentItems + revisions — multiple formats (§23), languages
  * (en/hi, §35), a two-revision correction (§36 preservation + provenance) and
  * one DRAFT for the lifecycle demo.
+ *
+ * P2-S3 scope: Sources + provenance links (§24) — verification states (one
+ * UNRELIABLE for the trust demo), claim/content-level attribution, and one
+ * AI-assisted DRAFT CURRENT_EVENT_UPDATE (§26 provenance flag + the
+ * source-backed-update format the P2-S2 handoff called for).
  *
  * Run: bun run db:seed
  */
@@ -785,12 +789,235 @@ async function main() {
     contentSeeded += 1
   }
 
+  // ---------- P2-S3: Sources + provenance links (Master Plan §24/§26/§45) ----------
+  // Structurally rich evidence: categories (OFFICIAL/NEWS_MEDIA/INSTITUTIONAL),
+  // verification states (VERIFIED + one UNVERIFIED + one UNRELIABLE trust-revoked
+  // demo), claim-level AND content-level attribution (§24), and one AI-assisted
+  // DRAFT CURRENT_EVENT_UPDATE (§26 flag + the source-backed-update format).
+  // Seed writes never overwrite live edits (§36); sources dedup by URL.
+
+  interface SourceSeed {
+    title: string
+    publisher: string
+    url: string
+    type: 'OFFICIAL' | 'NEWS_MEDIA' | 'INSTITUTIONAL' | 'ACADEMIC' | 'DATA' | 'OTHER'
+    verification: 'UNVERIFIED' | 'VERIFIED' | 'UNRELIABLE'
+    publishedAt?: Date
+    retrievedAt?: Date
+    verifiedAt?: Date
+    notes?: string
+  }
+
+  const sources: SourceSeed[] = [
+    {
+      title: 'ISRO — Chandrayaan-3 soft-landing announcement',
+      publisher: 'ISRO',
+      url: 'https://www.isro.gov.in/Chandrayaan3.html',
+      type: 'OFFICIAL',
+      verification: 'VERIFIED',
+      publishedAt: new Date('2023-08-23T00:00:00Z'),
+      retrievedAt: new Date('2025-06-18T00:00:00Z'),
+      verifiedAt: new Date('2025-06-18T00:00:00Z'),
+      notes: 'Primary official record of the Vikram landing — the canonical evidence for the mission facts.',
+    },
+    {
+      title: 'Chandrayaan-3 lands near lunar south pole, making India fourth nation to soft-land on Moon',
+      publisher: 'The Hindu',
+      url: 'https://www.thehindu.com/science/chandrayaan-3-soft-lands-on-moon/',
+      type: 'NEWS_MEDIA',
+      verification: 'VERIFIED',
+      publishedAt: new Date('2023-08-23T00:00:00Z'),
+      retrievedAt: new Date('2025-06-18T00:00:00Z'),
+      verifiedAt: new Date('2025-06-19T00:00:00Z'),
+    },
+    {
+      title: 'Charter of the United Nations — Chapter V (Security Council)',
+      publisher: 'United Nations',
+      url: 'https://www.un.org/en/about-us/un-charter/chapter-5',
+      type: 'INSTITUTIONAL',
+      verification: 'VERIFIED',
+      publishedAt: new Date('1945-06-26T00:00:00Z'),
+      retrievedAt: new Date('2025-06-14T00:00:00Z'),
+      verifiedAt: new Date('2025-06-14T00:00:00Z'),
+      notes: 'The primary source for UNSC composition and voting rules.',
+    },
+    {
+      title: 'Constitution of India — Part III (Fundamental Rights)',
+      publisher: 'Government of India',
+      url: 'https://www.india.gov.in/my-government/constitution-india',
+      type: 'OFFICIAL',
+      verification: 'VERIFIED',
+      publishedAt: new Date('1950-01-26T00:00:00Z'),
+      retrievedAt: new Date('2025-06-08T00:00:00Z'),
+      verifiedAt: new Date('2025-06-08T00:00:00Z'),
+    },
+    {
+      title: 'PIB release — National Space Day notification',
+      publisher: 'Press Information Bureau',
+      url: 'https://pib.gov.in/PressReleasePage.aspx?PRID=1950000',
+      type: 'OFFICIAL',
+      verification: 'UNVERIFIED', // recent record — awaiting the editorial verification pass (§24)
+      publishedAt: new Date('2025-10-04T00:00:00Z'),
+      retrievedAt: new Date('2025-11-20T00:00:00Z'),
+      notes: 'Registered but not yet editor-checked — demonstrates the UNVERIFIED state and the verify workflow.',
+    },
+    {
+      title: '“India becomes THIRD country to land on Moon” (retracted)',
+      publisher: 'Space Insider Daily',
+      url: 'https://spaceinsider-daily.example.com/india-third-country-moon-landing',
+      type: 'NEWS_MEDIA',
+      verification: 'UNRELIABLE', // trust revoked (§24) — factual error, retracted by the publisher
+      publishedAt: new Date('2023-08-23T00:00:00Z'),
+      retrievedAt: new Date('2025-06-18T00:00:00Z'),
+      verifiedAt: new Date('2025-06-18T00:00:00Z'),
+      notes: 'Trust-revoked demo: the “third country” error this outlet published is exactly what revision 1 of the Chandrayaan-3 fact card corrected (§36). Kept as preserved provenance history — never deleted, never attachable to new content.',
+    },
+  ]
+
+  const sourceIdByUrl = new Map<string, string>()
+  for (const seed of sources) {
+    const created = await prisma.source.upsert({
+      where: { url: seed.url },
+      update: {}, // never overwrite live editorial edits on re-seed (§36)
+      create: {
+        title: seed.title,
+        publisher: seed.publisher,
+        url: seed.url,
+        type: seed.type,
+        verification: seed.verification,
+        publishedAt: seed.publishedAt ?? null,
+        retrievedAt: seed.retrievedAt ?? new Date(),
+        verifiedAt: seed.verifiedAt ?? null,
+        notes: seed.notes ?? null,
+        createdById: admin.id,
+      },
+    })
+    sourceIdByUrl.set(seed.url, created.id)
+  }
+
+  // One AI-assisted DRAFT CURRENT_EVENT_UPDATE (§26 + the P2-S2 handoff's
+  // source-backed-update rendering) — staged provenance on an unpublished item.
+  const chandrayaanUnit = await prisma.knowledgeUnit.findUnique({
+    where: { slug: 'chandrayaan-3-landing-2023' },
+  })
+  let aiDraftSeeded = false
+  if (chandrayaanUnit) {
+    const existingUpdate = await prisma.contentItem.findUnique({
+      where: {
+        knowledgeUnitId_languageId_format: {
+          knowledgeUnitId: chandrayaanUnit.id,
+          languageId: en.id,
+          format: 'CURRENT_EVENT_UPDATE',
+        },
+      },
+      select: { id: true },
+    })
+    if (!existingUpdate) {
+      await prisma.contentItem.create({
+        data: {
+          knowledgeUnitId: chandrayaanUnit.id,
+          languageId: en.id,
+          format: 'CURRENT_EVENT_UPDATE',
+          status: 'DRAFT',
+          title: 'National Space Day — update on Chandrayaan-3 legacy',
+          body: 'Update: Following the Chandrayaan-3 soft landing on 23 August 2023, the Government of India notified 23 August as National Space Day. The landing site — “Shiv Shakti Point” — and the mission’s south-polar first have become standard exam anchors. This update summarizes the notification and links it to the canonical mission record. (AI-assisted draft: compiled by the AI layer from the cited PIB release and the ISRO record, pending editorial review — §26.)',
+          aiAssisted: true,
+          createdById: admin.id,
+        },
+      })
+      aiDraftSeeded = true
+    }
+  }
+
+  // Provenance links (§24): content-level and claim-level attribution.
+  interface LinkSeed {
+    unitSlug: string
+    languageCode: string
+    format:
+      | 'FACT_CARD'
+      | 'EXPLAINER'
+      | 'REVISION_NOTE'
+      | 'CURRENT_EVENT_UPDATE'
+      | 'TIMELINE'
+      | 'PROFILE'
+      | 'COMPARISON'
+    sourceUrl: string
+    claim?: string
+  }
+
+  const provenanceLinks: LinkSeed[] = [
+    {
+      unitSlug: 'chandrayaan-3-landing-2023',
+      languageCode: 'en',
+      format: 'FACT_CARD',
+      sourceUrl: 'https://www.isro.gov.in/Chandrayaan3.html',
+      // content-level: the official record backs the whole card
+    },
+    {
+      unitSlug: 'chandrayaan-3-landing-2023',
+      languageCode: 'en',
+      format: 'FACT_CARD',
+      sourceUrl: 'https://www.thehindu.com/science/chandrayaan-3-soft-lands-on-moon/',
+      claim: 'India is the FOURTH country to soft-land on the Moon (after USSR, USA, China) and the first near the south pole — the claim corrected in revision 2 (§36).',
+    },
+    {
+      unitSlug: 'un-security-council-permanent-members',
+      languageCode: 'en',
+      format: 'EXPLAINER',
+      sourceUrl: 'https://www.un.org/en/about-us/un-charter/chapter-5',
+    },
+    {
+      unitSlug: 'fundamental-rights-articles-12-35',
+      languageCode: 'en',
+      format: 'EXPLAINER',
+      sourceUrl: 'https://www.india.gov.in/my-government/constitution-india',
+    },
+    {
+      // Staged provenance on the AI-assisted DRAFT (§26): visible in the admin
+      // link manager, public only once the item passes review + publish.
+      unitSlug: 'chandrayaan-3-landing-2023',
+      languageCode: 'en',
+      format: 'CURRENT_EVENT_UPDATE',
+      sourceUrl: 'https://pib.gov.in/PressReleasePage.aspx?PRID=1950000',
+      claim: 'The National Space Day notification (23 August).',
+    },
+  ]
+
+  let linksSeeded = 0
+  for (const seed of provenanceLinks) {
+    const unit = await prisma.knowledgeUnit.findUnique({ where: { slug: seed.unitSlug } })
+    const languageId = languageIdByCode.get(seed.languageCode)
+    const sourceId = sourceIdByUrl.get(seed.sourceUrl)
+    if (!unit || !languageId || !sourceId) {
+      console.warn(`[seed] skipping source link for "${seed.unitSlug}/${seed.languageCode}/${seed.format}": prerequisite missing`)
+      continue
+    }
+    const item = await prisma.contentItem.findUnique({
+      where: { knowledgeUnitId_languageId_format: { knowledgeUnitId: unit.id, languageId, format: seed.format } },
+      select: { id: true },
+    })
+    if (!item) continue
+    const existing = await prisma.contentSourceLink.findUnique({
+      where: { contentItemId_sourceId: { contentItemId: item.id, sourceId } },
+      select: { id: true },
+    })
+    if (existing) continue
+    await prisma.contentSourceLink.create({
+      data: {
+        contentItemId: item.id,
+        sourceId,
+        claim: seed.claim ?? null,
+      },
+    })
+    linksSeeded += 1
+  }
+
   console.log(
     `Seed complete → languages: ${[en.code, hi.code, fr.code].join(', ')} | countries: ${[
       `${india.isoCode} (default)`,
       `${uk.isoCode} (coming soon)`,
       `${france.isoCode} (coming soon)`,
-    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded}`
+    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''})`
   )
 }
 
