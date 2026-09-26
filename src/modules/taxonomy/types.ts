@@ -8,12 +8,9 @@ export type TopicStatusPublic = 'ACTIVE' | 'INACTIVE' | 'RETIRED'
 export type TopicTypePublic = 'DOMAIN' | 'BRANCH' | 'TOPIC'
 export type TopicScopePublic = 'GLOBAL' | 'COUNTRY'
 
-/** Actor context threaded through admin operations (roles are platform-level, §38). */
-export interface TopicActor {
-  role: 'ADMIN' | 'COUNTRY_ADMIN' | 'WRITER' | 'READER'
-  /** user.homeCountryId — the country a COUNTRY_ADMIN administers. */
-  countryId: string | null
-}
+// Since P1-S5, admin operations take the shared permission `Actor`
+// (src/lib/permissions.ts — role + home-country scope), built by
+// `actorFromUser` in the identity-access module.
 
 /** Per-node permissions the admin UI renders from (scoped enforcement §38). */
 export interface TopicPermissions {

@@ -20,6 +20,7 @@ export {
   createLanguage,
   updateLanguage,
 } from './service'
+export type { LocaleRequestMeta } from './service'
 export { buildCanonicalUrl } from './url'
 export { RESERVED_SLUGS } from './validation'
 export {

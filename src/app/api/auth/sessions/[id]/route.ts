@@ -14,7 +14,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   const { id } = await params
   try {
-    const session = await revokeSessionById(context.user.id, id)
+    const session = await revokeSessionById(context.user.id, id, {
+      userId: context.user.id,
+      email: context.user.email,
+      role: context.user.role,
+    })
     const revokedCurrent = session.id === context.session.id
     return ok({ session, revokedCurrent, signedOut: revokedCurrent })
   } catch (error) {

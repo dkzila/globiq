@@ -7,13 +7,12 @@
 import { NextResponse } from 'next/server'
 
 import { errors, fail, ok } from '@/lib/api/response'
-import { requireRole } from '@/lib/api/guard'
+import { requirePermission } from '@/lib/api/guard'
 import { fieldErrors } from '@/lib/validation'
 import { checkRateLimit, clientIp, RATE_LIMITS } from '@/lib/rate-limit'
 import {
   getAdminTopic,
   retireTopic,
-  topicActorFromAuth,
   toTaxonomyErrorResponse,
   updateTopic,
   updateTopicSchema,
@@ -22,13 +21,12 @@ import {
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(request, ['ADMIN', 'COUNTRY_ADMIN'])
+  const auth = await requirePermission(request, 'taxonomy:manage')
   if (auth instanceof NextResponse) return auth
 
   const { id } = await params
   try {
-    const actor = await topicActorFromAuth(auth.user)
-    const topic = await getAdminTopic(actor, id)
+    const topic = await getAdminTopic(auth.actor, id)
     return ok({ topic })
   } catch (error) {
     const mapped = toTaxonomyErrorResponse(error)
@@ -39,7 +37,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(request, ['ADMIN', 'COUNTRY_ADMIN'])
+  const auth = await requirePermission(request, 'taxonomy:manage')
   if (auth instanceof NextResponse) return auth
 
   const limit = checkRateLimit(`taxonomy:write:${clientIp(request)}`, RATE_LIMITS.taxonomyWrite)
@@ -59,8 +57,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { id } = await params
   try {
-    const actor = await topicActorFromAuth(auth.user)
-    const topic = await updateTopic(actor, id, parsed.data)
+    const topic = await updateTopic(auth.actor, id, parsed.data, {
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
     return ok({ topic })
   } catch (error) {
     const mapped = toTaxonomyErrorResponse(error)
@@ -71,7 +71,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireRole(request, ['ADMIN', 'COUNTRY_ADMIN'])
+  const auth = await requirePermission(request, 'taxonomy:manage')
   if (auth instanceof NextResponse) return auth
 
   const limit = checkRateLimit(`taxonomy:write:${clientIp(request)}`, RATE_LIMITS.taxonomyWrite)
@@ -79,8 +79,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   const { id } = await params
   try {
-    const actor = await topicActorFromAuth(auth.user)
-    const topic = await retireTopic(actor, id)
+    const topic = await retireTopic(auth.actor, id, {
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
     return ok({ topic })
   } catch (error) {
     const mapped = toTaxonomyErrorResponse(error)

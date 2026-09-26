@@ -8,7 +8,8 @@
 import { NextResponse } from 'next/server'
 
 import { fail, ok, errors } from '@/lib/api/response'
-import { requireRole } from '@/lib/api/guard'
+import { requirePermission } from '@/lib/api/guard'
+import { clientIp } from '@/lib/rate-limit'
 import { fieldErrors } from '@/lib/validation'
 import {
   getPublicCountry,
@@ -34,7 +35,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ iso
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ iso: string }> }) {
-  const auth = await requireRole(request, ['ADMIN'])
+  const auth = await requirePermission(request, 'country-config:manage')
   if (auth instanceof NextResponse) return auth
 
   const { iso } = await params
@@ -52,7 +53,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ is
   }
 
   try {
-    const country = await updateCountry(iso, parsed.data)
+    const country = await updateCountry(auth.actor, iso, parsed.data, {
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
     return ok({ country })
   } catch (error) {
     const mapped = toLocaleErrorResponse(error)

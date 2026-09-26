@@ -6,7 +6,8 @@
 import { NextResponse } from 'next/server'
 
 import { fail, ok, errors } from '@/lib/api/response'
-import { requireRole } from '@/lib/api/guard'
+import { requirePermission } from '@/lib/api/guard'
+import { clientIp } from '@/lib/rate-limit'
 import { fieldErrors } from '@/lib/validation'
 import {
   createCountry,
@@ -28,7 +29,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireRole(request, ['ADMIN'])
+  const auth = await requirePermission(request, 'country-config:manage')
   if (auth instanceof NextResponse) return auth
 
   let body: unknown
@@ -44,7 +45,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const country = await createCountry(parsed.data)
+    const country = await createCountry(auth.actor, parsed.data, {
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
     return ok({ country }, { status: 201 })
   } catch (error) {
     const mapped = toLocaleErrorResponse(error)

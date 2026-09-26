@@ -6,14 +6,15 @@
 import { NextResponse } from 'next/server'
 
 import { fail, ok, errors } from '@/lib/api/response'
-import { requireRole } from '@/lib/api/guard'
+import { requirePermission } from '@/lib/api/guard'
+import { clientIp } from '@/lib/rate-limit'
 import { fieldErrors } from '@/lib/validation'
 import { toLocaleErrorResponse, updateLanguage, updateLanguageSchema } from '@/modules/country-locale'
 
 export const dynamic = 'force-dynamic'
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ code: string }> }) {
-  const auth = await requireRole(request, ['ADMIN'])
+  const auth = await requirePermission(request, 'language:manage')
   if (auth instanceof NextResponse) return auth
 
   const { code } = await params
@@ -31,7 +32,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ co
   }
 
   try {
-    const language = await updateLanguage(code, parsed.data)
+    const language = await updateLanguage(auth.actor, code, parsed.data, {
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
     return ok({ language })
   } catch (error) {
     const mapped = toLocaleErrorResponse(error)

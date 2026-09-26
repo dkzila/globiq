@@ -6,7 +6,6 @@
 export {
   TaxonomyError,
   toTaxonomyErrorResponse,
-  topicActorFromAuth,
   getPublicTree,
   getPublicTopic,
   searchTopics,
@@ -41,7 +40,6 @@ export type {
   PublicTopicLabel,
   PublicTopicNode,
   PublicTopicPathEntry,
-  TopicActor,
   TopicPermissions,
   TopicSearchResult,
   TopicScopePublic,

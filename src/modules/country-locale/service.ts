@@ -10,6 +10,12 @@
  * (P4) and mobile clients both reuse resolveLocaleContext / resolveFromPath.
  */
 import { db } from '@/lib/db'
+import { assertCan, type Actor } from '@/lib/permissions'
+import {
+  AUDIT_ACTIONS,
+  AUDIT_OBJECT_TYPES,
+  recordAudit,
+} from '@/modules/audit'
 import { getSnapshot, invalidateSnapshot, type CountrySnapshotRow } from './cache'
 import { buildCanonicalUrl } from './url'
 import type {
@@ -24,6 +30,16 @@ import type {
   UpdateCountryInput,
   UpdateLanguageInput,
 } from './validation'
+
+/** Request context captured in the audit trail (§30). */
+export interface LocaleRequestMeta {
+  ip?: string | null
+  userAgent?: string | null
+}
+
+function auditRefOf(actor: Actor) {
+  return { userId: actor.userId, email: actor.email, role: actor.role }
+}
 
 // ---------- Typed domain errors (mapped to HTTP by route handlers) ----------
 
@@ -372,7 +388,14 @@ async function assertNoUrlCollision(languageCodes: string[]): Promise<void> {
 
 // ---------- Admin: countries ----------
 
-export async function createCountry(input: CreateCountryInput): Promise<PublicCountry> {
+export async function createCountry(
+  actor: Actor,
+  input: CreateCountryInput,
+  meta: LocaleRequestMeta = {}
+): Promise<PublicCountry> {
+  // §37: authorization at the service boundary (route guard is defense in depth).
+  assertCan(actor, 'country-config:manage')
+
   const snapshot = await getSnapshot()
   if (snapshot.countries.some((c) => c.isoCode === input.isoCode)) {
     throw new LocaleError('ISO_TAKEN', `ISO code "${input.isoCode}" already exists`)
@@ -405,12 +428,32 @@ export async function createCountry(input: CreateCountryInput): Promise<PublicCo
   })
 
   invalidateSnapshot()
-  return getCountryIncludingInactive(input.isoCode)
+  const created = await getCountryIncludingInactive(input.isoCode)
+  await recordAudit({
+    actor: auditRefOf(actor),
+    action: AUDIT_ACTIONS.countryCreate,
+    objectType: AUDIT_OBJECT_TYPES.country,
+    objectId: input.isoCode,
+    objectLabel: input.name,
+    after: created,
+    metadata: { isoCode: input.isoCode, slug: input.slug, status: input.status },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return created
 }
 
-export async function updateCountry(iso: string, input: UpdateCountryInput): Promise<PublicCountry> {
+export async function updateCountry(
+  actor: Actor,
+  iso: string,
+  input: UpdateCountryInput,
+  meta: LocaleRequestMeta = {}
+): Promise<PublicCountry> {
+  assertCan(actor, 'country-config:manage')
+
   const existing = await db.country.findUnique({ where: { isoCode: iso.toUpperCase() } })
   if (!existing) throw new LocaleError('COUNTRY_NOT_FOUND', `Unknown country "${iso}"`)
+  const before = await getCountryIncludingInactive(iso)
 
   // The default root market's identity is frozen (India at "/" — §14/§16).
   if (existing.isDefault && (input.slug !== undefined || input.status !== undefined)) {
@@ -457,16 +500,37 @@ export async function updateCountry(iso: string, input: UpdateCountryInput): Pro
   })
 
   invalidateSnapshot()
-  return getCountryIncludingInactive(iso)
+  const updated = await getCountryIncludingInactive(iso)
+  await recordAudit({
+    actor: auditRefOf(actor),
+    action: AUDIT_ACTIONS.countryUpdate,
+    objectType: AUDIT_OBJECT_TYPES.country,
+    objectId: existing.isoCode,
+    objectLabel: updated?.name ?? existing.name,
+    before,
+    after: updated,
+    metadata: { isoCode: existing.isoCode, changedFields: Object.keys(input) },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return updated
 }
 
 /** Replaces the full set of languages a country exposes (§35). */
-export async function setCountryLanguages(iso: string, input: SetCountryLanguagesInput): Promise<PublicCountry> {
+export async function setCountryLanguages(
+  actor: Actor,
+  iso: string,
+  input: SetCountryLanguagesInput,
+  meta: LocaleRequestMeta = {}
+): Promise<PublicCountry> {
+  assertCan(actor, 'country-config:manage')
+
   const existing = await db.country.findUnique({
     where: { isoCode: iso.toUpperCase() },
     include: { defaultLanguage: true },
   })
   if (!existing) throw new LocaleError('COUNTRY_NOT_FOUND', `Unknown country "${iso}"`)
+  const before = await getCountryIncludingInactive(iso)
   if (!existing.defaultLanguage) {
     throw new LocaleError('DEFAULT_LANGUAGE_REQUIRED', 'Country has no default language configured')
   }
@@ -500,7 +564,23 @@ export async function setCountryLanguages(iso: string, input: SetCountryLanguage
   })
 
   invalidateSnapshot()
-  return getCountryIncludingInactive(iso)
+  const updated = await getCountryIncludingInactive(iso)
+  await recordAudit({
+    actor: auditRefOf(actor),
+    action: AUDIT_ACTIONS.countryLanguagesSet,
+    objectType: AUDIT_OBJECT_TYPES.country,
+    objectId: existing.isoCode,
+    objectLabel: updated?.name ?? existing.name,
+    before,
+    after: updated,
+    metadata: {
+      isoCode: existing.isoCode,
+      languageCodes: codes,
+    },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return updated
 }
 
 // ---------- Admin: languages ----------
@@ -519,7 +599,13 @@ export async function listAdminLanguages(): Promise<AdminLanguage[]> {
   }))
 }
 
-export async function createLanguage(input: CreateLanguageInput): Promise<AdminLanguage> {
+export async function createLanguage(
+  actor: Actor,
+  input: CreateLanguageInput,
+  meta: LocaleRequestMeta = {}
+): Promise<AdminLanguage> {
+  assertCan(actor, 'language:manage')
+
   const snapshot = await getSnapshot()
   if (snapshot.languages.some((l) => l.code === input.code)) {
     throw new LocaleError('CODE_TAKEN', `Language code "${input.code}" already exists`)
@@ -538,7 +624,7 @@ export async function createLanguage(input: CreateLanguageInput): Promise<AdminL
   invalidateSnapshot()
   const created = (await getSnapshot()).languages.find((l) => l.code === input.code)
   if (!created) throw new LocaleError('LANGUAGE_NOT_FOUND', 'Language was created but could not be read back')
-  return {
+  const result = {
     code: created.code,
     name: created.name,
     nativeName: created.nativeName,
@@ -546,11 +632,36 @@ export async function createLanguage(input: CreateLanguageInput): Promise<AdminL
     status: created.status as 'ACTIVE' | 'INACTIVE',
     configuredInCountries: 0,
   }
+  await recordAudit({
+    actor: auditRefOf(actor),
+    action: AUDIT_ACTIONS.languageCreate,
+    objectType: AUDIT_OBJECT_TYPES.language,
+    objectId: created.code,
+    objectLabel: created.name,
+    after: result,
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return result
 }
 
-export async function updateLanguage(code: string, input: UpdateLanguageInput): Promise<AdminLanguage> {
+export async function updateLanguage(
+  actor: Actor,
+  code: string,
+  input: UpdateLanguageInput,
+  meta: LocaleRequestMeta = {}
+): Promise<AdminLanguage> {
+  assertCan(actor, 'language:manage')
+
   const existing = await db.language.findUnique({ where: { code: code.toLowerCase() } })
   if (!existing) throw new LocaleError('LANGUAGE_NOT_FOUND', `Unknown language "${code}"`)
+  const before = {
+    code: existing.code,
+    name: existing.name,
+    nativeName: existing.nativeName,
+    direction: existing.direction,
+    status: existing.status,
+  }
 
   const snapshot = await getSnapshot()
 
@@ -588,7 +699,7 @@ export async function updateLanguage(code: string, input: UpdateLanguageInput): 
   const configuredInCountries = (await getSnapshot()).countries.filter((c) =>
     c.languages.some((l) => l.id === existing.id)
   ).length
-  return {
+  const result = {
     code: updated.code,
     name: updated.name,
     nativeName: updated.nativeName,
@@ -596,4 +707,17 @@ export async function updateLanguage(code: string, input: UpdateLanguageInput): 
     status: updated.status as 'ACTIVE' | 'INACTIVE',
     configuredInCountries,
   }
+  await recordAudit({
+    actor: auditRefOf(actor),
+    action: AUDIT_ACTIONS.languageUpdate,
+    objectType: AUDIT_OBJECT_TYPES.language,
+    objectId: existing.code,
+    objectLabel: result.name,
+    before,
+    after: result,
+    metadata: { changedFields: Object.keys(input) },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return result
 }

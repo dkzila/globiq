@@ -177,7 +177,7 @@ export function AccountSection() {
 // ---------- Authenticated view: profile + sessions ----------
 
 function AuthenticatedView({ onSignOut }: { onSignOut: () => Promise<void> }) {
-  const { user, session, listSessions, revokeSession } = useAuth()
+  const { user, session, permissions, listSessions, revokeSession } = useAuth()
   const { toast } = useToast()
   const [sessions, setSessions] = useState<PublicSession[] | null>(null)
   const [loadingSessions, setLoadingSessions] = useState(true)
@@ -259,6 +259,26 @@ function AuthenticatedView({ onSignOut }: { onSignOut: () => Promise<void> }) {
             <Badge variant="outline" className="font-normal text-zinc-500">
               {user?.emailVerified ? 'Email verified' : 'Email unverified'}
             </Badge>
+          </div>
+
+          {/* Effective permissions (P1-S5) — server-provided affordances only */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-zinc-500">Effective permissions (server-side enforced)</p>
+            <div className="flex flex-wrap gap-1.5">
+              {permissions.length === 0 ? (
+                <span className="text-xs text-zinc-400">Loading…</span>
+              ) : (
+                permissions.map((permission) => (
+                  <Badge
+                    key={permission}
+                    variant="outline"
+                    className="font-mono text-[10px] font-normal text-zinc-600"
+                  >
+                    {permission}
+                  </Badge>
+                ))
+              )}
+            </div>
           </div>
 
           <Separator />

@@ -1,14 +1,27 @@
 /**
- * GlobIQ — API auth guards (Master Plan §30, §37, §38)
+ * GlobIQ — API auth guards (Master Plan §20, §30, §37, §38)
  *
- * Thin helpers that bridge identity-access authentication with the API error
- * envelope. Route handlers call these before touching module services.
- * Full permission/scope enforcement (per-country scopes, audit) lands in P1-S5.
+ * Thin helpers that bridge identity-access authentication and the shared
+ * permission layer with the API error envelope. Route handlers call these
+ * before touching module services; services re-assert at their boundary
+ * (§37 — authorization checks at the service boundary, defense in depth).
+ *
+ * P1-S5: `requirePermission` is the single route-level choke point. Every
+ * denial is audited (§30) — including who attempted a privileged operation
+ * and was rejected.
  */
 import { NextResponse } from 'next/server'
 
 import { errors } from '@/lib/api/response'
-import { authenticateRequest } from '@/modules/identity-access'
+import {
+  can,
+  type Actor,
+  type Permission,
+  type PermissionTarget,
+} from '@/lib/permissions'
+import { clientIp } from '@/lib/rate-limit'
+import { AUDIT_ACTIONS, AUDIT_OBJECT_TYPES, recordAudit } from '@/modules/audit'
+import { actorFromUser, authenticateRequest } from '@/modules/identity-access'
 import type { AuthContext, PublicUser } from '@/modules/identity-access'
 
 /**
@@ -21,19 +34,46 @@ export async function requireAuth(request: Request): Promise<AuthContext | NextR
   return context
 }
 
+/** Authenticated context + resolved permission actor (P1-S5). */
+export interface AuthGuard {
+  user: PublicUser
+  session: AuthContext['session']
+  /** Role + home-country scope — pass to module services for object checks. */
+  actor: Actor
+}
+
 /**
- * Returns the authenticated context when the user's role is in `roles`,
- * otherwise a 401/403 response. Roles are platform-level (§6); scoped
- * authorization is enforced per-operation from P1-S5 onward.
+ * Returns the authenticated context when the caller holds `permission`
+ * (optionally narrowed by `target` scope), otherwise a 401/403 response.
+ * Denials are recorded in the audit trail (§30).
  */
-export async function requireRole(
+export async function requirePermission(
   request: Request,
-  roles: ReadonlyArray<PublicUser['role']>
-): Promise<AuthContext | NextResponse> {
+  permission: Permission,
+  target?: PermissionTarget
+): Promise<AuthGuard | NextResponse> {
   const context = await authenticateRequest(request)
   if (!context) return errors.unauthorized()
-  if (!roles.includes(context.user.role)) {
-    return errors.forbidden('This operation requires a higher role')
+
+  const actor = await actorFromUser(context.user)
+  if (!can(actor, permission, target)) {
+    await recordAudit({
+      actor: { userId: actor.userId, email: actor.email, role: actor.role },
+      action: AUDIT_ACTIONS.accessDenied,
+      objectType: AUDIT_OBJECT_TYPES.permission,
+      objectId: permission,
+      objectLabel: permission,
+      metadata: {
+        permission,
+        method: request.method,
+        path: new URL(request.url).pathname,
+        reason: 'PERMISSION_DENIED',
+      },
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
+    return errors.forbidden(`This operation requires the "${permission}" permission`)
   }
-  return context
+
+  return { user: context.user, session: context.session, actor }
 }

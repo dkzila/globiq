@@ -10,12 +10,14 @@ export {
   registerUser,
   loginWithPassword,
   authenticateRequest,
+  actorFromUser,
   listSessions,
   revokeSessionById,
   revokeCurrentSession,
   toPublicUser,
   toAuthErrorResponse,
 } from './service'
+export type { AuthRequestMeta } from './service'
 export { hashPassword, verifyPassword } from './password'
 export {
   generateToken,

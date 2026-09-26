@@ -46,6 +46,9 @@ enum CountryStatus {
 
 // P1-S2 (§6, §20, §38): roles are platform-level; country/language scoping for
 // privileged roles is enforced per-operation from P1-S5 onward.
+// P1-S5: scoping is enforced via src/lib/permissions.ts on every protected
+// operation (§20: "The authorization service checks those scopes on every
+// protected operation") — not by hiding UI elements.
 enum UserRole {
   READER
   WRITER
@@ -172,6 +175,7 @@ model User {
   homeCountry       Country?       @relation(fields: [homeCountryId], references: [id])
   preferredLanguage Language?      @relation(fields: [preferredLanguageId], references: [id])
   authSessions      AuthSession[]
+  auditLogs         AuditLog[]
 
   @@index([homeCountryId])
   @@index([preferredLanguageId])
@@ -261,4 +265,36 @@ model TopicAlias {
 
   @@unique([topicId, value])
   @@index([languageId])
+}
+
+// ---------- P1-S5: Audit (Master Plan §6 AuditLog model, §19, §30, §36, §204-row) ----------
+
+// Append-only accountability trail: actor, action, object, timestamp,
+// before/after (§6). Rows are NEVER updated or deleted — corrections are new
+// events. Sensitive values (password/token hashes) are redacted before write
+// by the audit module (§30 data minimisation). Actor identity is denormalised
+// (email/role at action time) so the trail stays readable even after the user
+// row is deleted (actorId → SetNull).
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String? // null = system / deleted user / anonymous attempt
+  actorEmail  String? // denormalised snapshot (accountability after deletion)
+  actorRole   String? // role held at action time
+  action      String // namespaced event key, e.g. "taxonomy.topic.update"
+  objectType  String // "Topic" | "Country" | "Language" | "AuthSession" | "User" | …
+  objectId    String?
+  objectLabel String? // human-readable identity (slug/code/email) for reads
+  before      Json? // state prior to the mutation (redacted)
+  after       Json? // state after the mutation (redacted)
+  metadata    Json? // request context: ip, userAgent, scope, reason, …
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([objectType, objectId])
+  @@index([action, createdAt])
 }

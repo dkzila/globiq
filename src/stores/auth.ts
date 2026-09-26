@@ -53,6 +53,9 @@ interface AuthStore {
   token: string | null
   user: PublicUser | null
   session: PublicSession | null
+  /** Effective permissions from the server (P1-S5) — UI affordances only;
+   *  the server re-checks every operation (§20, §37). */
+  permissions: string[]
   status: AuthStatus
   error: string | null
   /** Re-validates a persisted token against /api/auth/me. */
@@ -71,36 +74,49 @@ export const useAuth = create<AuthStore>()(
       token: null,
       user: null,
       session: null,
+      permissions: [],
       status: 'idle',
       error: null,
 
       initialize: async () => {
         const token = get().token
         if (!token) {
-          set({ status: 'unauthenticated', user: null, session: null })
+          set({ status: 'unauthenticated', user: null, session: null, permissions: [] })
           return
         }
         set({ status: 'loading', error: null })
-        const result = await api<{ user: PublicUser; session: PublicSession }>('/api/auth/me', { token })
+        const result = await api<{ user: PublicUser; session: PublicSession; permissions: string[] }>(
+          '/api/auth/me',
+          { token }
+        )
         if (result.status === 'ok' && result.data) {
-          set({ user: result.data.user, session: result.data.session, status: 'authenticated' })
+          set({
+            user: result.data.user,
+            session: result.data.session,
+            permissions: result.data.permissions ?? [],
+            status: 'authenticated',
+          })
         } else {
           // Token expired/revoked server-side — drop it (§30).
-          set({ token: null, user: null, session: null, status: 'unauthenticated' })
+          set({ token: null, user: null, session: null, permissions: [], status: 'unauthenticated' })
         }
       },
 
       signIn: async (email, password) => {
         set({ error: null })
-        const result = await api<{ user: PublicUser; grant: Grant }>('/api/auth/login', {
-          method: 'POST',
-          body: JSON.stringify({ email, password }),
-        })
+        const result = await api<{ user: PublicUser; grant: Grant; permissions: string[] }>(
+          '/api/auth/login',
+          {
+            method: 'POST',
+            body: JSON.stringify({ email, password }),
+          }
+        )
         if (result.status === 'ok' && result.data) {
           set({
             token: result.data.grant.token,
             user: result.data.user,
             session: result.data.grant.session,
+            permissions: result.data.permissions ?? [],
             status: 'authenticated',
           })
           return true
@@ -111,15 +127,19 @@ export const useAuth = create<AuthStore>()(
 
       signUp: async (input) => {
         set({ error: null })
-        const result = await api<{ user: PublicUser; grant: Grant }>('/api/auth/register', {
-          method: 'POST',
-          body: JSON.stringify(input),
-        })
+        const result = await api<{ user: PublicUser; grant: Grant; permissions: string[] }>(
+          '/api/auth/register',
+          {
+            method: 'POST',
+            body: JSON.stringify(input),
+          }
+        )
         if (result.status === 'ok' && result.data) {
           set({
             token: result.data.grant.token,
             user: result.data.user,
             session: result.data.grant.session,
+            permissions: result.data.permissions ?? [],
             status: 'authenticated',
           })
           return true
@@ -132,7 +152,7 @@ export const useAuth = create<AuthStore>()(
         const token = get().token
         // Best-effort server revocation — local state clears regardless.
         if (token) void api('/api/auth/logout', { method: 'POST', token })
-        set({ token: null, user: null, session: null, status: 'unauthenticated', error: null })
+        set({ token: null, user: null, session: null, permissions: [], status: 'unauthenticated', error: null })
       },
 
       listSessions: async () => {

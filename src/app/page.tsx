@@ -37,6 +37,7 @@ import { PHASES } from '@/config/roadmap'
 import { MODULES } from '@/modules'
 import { AccountSection } from '@/components/auth/account-section'
 import { HeaderAuth } from '@/components/auth/header-auth'
+import { AuditSection } from '@/components/audit/audit-section'
 import { LocaleSection } from '@/components/locale/locale-section'
 import { TaxonomySection } from '@/components/taxonomy/taxonomy-section'
 
@@ -138,7 +139,7 @@ export default function FoundationStatusPage() {
               variant="outline"
               className="hidden shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 sm:inline-flex"
             >
-              Phase 1 · Session 4 — Taxonomy
+              Phase 1 · Session 5 — Audit & Permissions
             </Badge>
             <HeaderAuth />
           </div>
@@ -167,8 +168,9 @@ export default function FoundationStatusPage() {
           </h1>
           <p className="max-w-2xl text-base text-zinc-600 sm:text-lg">
             {PLATFORM.description} This page verifies the running foundation: database, APIs, module
-            architecture, CI, token-based identity (P1-S2), country/language configuration (P1-S3) —
-            and now the canonical taxonomy with country extensions and admin CRUD (P1-S4).
+            architecture, CI, token-based identity (P1-S2), country/language configuration (P1-S3),
+            canonical taxonomy with country extensions (P1-S4) — and now audit logging with
+            server-side permission enforcement on every privileged operation (P1-S5).
           </p>
 
           {/* Live status pill */}
@@ -315,6 +317,9 @@ export default function FoundationStatusPage() {
         {/* ---------- Taxonomy (P1-S4) ---------- */}
         <TaxonomySection />
 
+        {/* ---------- Audit trail (P1-S5, ADMIN only) ---------- */}
+        <AuditSection />
+
         {/* ---------- Module map ---------- */}
         <section aria-labelledby="modules-heading" className="mt-10 space-y-4">
           <div className="flex items-center gap-2">
@@ -365,7 +370,7 @@ export default function FoundationStatusPage() {
           </div>
           <p className="text-sm text-zinc-600">
             One chat = one session (§41). Currently executing{' '}
-            <strong className="text-zinc-900">P1-S4 of 55 sessions</strong> in the vertical slice.
+            <strong className="text-zinc-900">P1-S5 of 55 sessions</strong> in the vertical slice.
           </p>
           <ol className="flex flex-wrap gap-2">
             {PHASES.map((phase) => (

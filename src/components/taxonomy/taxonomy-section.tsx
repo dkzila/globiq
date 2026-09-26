@@ -41,7 +41,9 @@ interface ApiCountry {
 
 export function TaxonomySection() {
   const user = useAuth((state) => state.user)
-  const privileged = user?.role === 'ADMIN' || user?.role === 'COUNTRY_ADMIN'
+  // Server-provided affordance (P1-S5): the Admin tab appears for anyone who
+  // can manage taxonomy; the server re-checks every operation (§20, §37).
+  const privileged = useAuth((state) => state.permissions.includes('taxonomy:manage'))
 
   const [countries, setCountries] = useState<ExplorerCountry[] | null>(null)
   const [countryIso, setCountryIso] = useState<string>('IN')

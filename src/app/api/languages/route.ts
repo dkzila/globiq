@@ -1,14 +1,16 @@
 /**
  * GET  /api/languages — privileged staff: platform language table (§38 admin
  *   surface; public consumers must discover languages via /api/countries,
- *   never a global list — §35). COUNTRY_ADMIN needs the read for taxonomy
- *   label editing (P1-S4); writes stay ADMIN-only.
+ *   never a global list — §35). Anyone who can manage taxonomy (ADMIN +
+ *   COUNTRY_ADMIN, for label editing since P1-S4) may read; writes stay
+ *   ADMIN-only (`language:manage`).
  * POST /api/languages — admin: add a language to the platform.
  */
 import { NextResponse } from 'next/server'
 
 import { fail, ok, errors } from '@/lib/api/response'
-import { requireRole } from '@/lib/api/guard'
+import { requirePermission } from '@/lib/api/guard'
+import { clientIp } from '@/lib/rate-limit'
 import { fieldErrors } from '@/lib/validation'
 import {
   createLanguage,
@@ -20,7 +22,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  const auth = await requireRole(request, ['ADMIN', 'COUNTRY_ADMIN'])
+  const auth = await requirePermission(request, 'taxonomy:manage')
   if (auth instanceof NextResponse) return auth
 
   try {
@@ -33,7 +35,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireRole(request, ['ADMIN'])
+  const auth = await requirePermission(request, 'language:manage')
   if (auth instanceof NextResponse) return auth
 
   let body: unknown
@@ -49,7 +51,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const language = await createLanguage(parsed.data)
+    const language = await createLanguage(auth.actor, parsed.data, {
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
     return ok({ language }, { status: 201 })
   } catch (error) {
     const mapped = toLocaleErrorResponse(error)

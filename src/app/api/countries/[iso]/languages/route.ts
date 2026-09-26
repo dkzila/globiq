@@ -6,7 +6,8 @@
 import { NextResponse } from 'next/server'
 
 import { fail, ok, errors } from '@/lib/api/response'
-import { requireRole } from '@/lib/api/guard'
+import { requirePermission } from '@/lib/api/guard'
+import { clientIp } from '@/lib/rate-limit'
 import { fieldErrors } from '@/lib/validation'
 import {
   setCountryLanguages,
@@ -17,7 +18,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 export async function PUT(request: Request, { params }: { params: Promise<{ iso: string }> }) {
-  const auth = await requireRole(request, ['ADMIN'])
+  const auth = await requirePermission(request, 'country-config:manage')
   if (auth instanceof NextResponse) return auth
 
   const { iso } = await params
@@ -35,7 +36,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ iso:
   }
 
   try {
-    const country = await setCountryLanguages(iso, parsed.data)
+    const country = await setCountryLanguages(auth.actor, iso, parsed.data, {
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
     return ok({ country })
   } catch (error) {
     const mapped = toLocaleErrorResponse(error)

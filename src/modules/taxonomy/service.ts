@@ -12,12 +12,18 @@
 import { Prisma } from '@prisma/client'
 
 import { db } from '@/lib/db'
+import { can, type Actor } from '@/lib/permissions'
+import {
+  AUDIT_ACTIONS,
+  AUDIT_OBJECT_TYPES,
+  recordAudit,
+  type AuditRequestMeta,
+} from '@/modules/audit'
 import {
   findActiveCountryByIso,
   resolveLocaleContext,
 } from '@/modules/country-locale'
 import type { LocaleResolution } from '@/modules/country-locale'
-import type { PublicUser } from '@/modules/identity-access/types'
 import { getTaxonomySnapshot, invalidateTaxonomySnapshot } from './cache'
 import type { TaxonomySnapshot, TopicRow } from './cache'
 import type {
@@ -28,7 +34,6 @@ import type {
   PublicTopicLabel,
   PublicTopicNode,
   PublicTopicPathEntry,
-  TopicActor,
   TopicPermissions,
   TopicSearchResult,
 } from './types'
@@ -212,49 +217,98 @@ async function resolveContext(input: {
 
 // ---------- Scoped RBAC (§38: ADMIN global, COUNTRY_ADMIN own extensions) ----------
 
-/**
- * Builds the actor context from an authenticated user. The home country is
- * resolved via the cached country snapshot (no extra DB round-trip).
- * A COUNTRY_ADMIN without a home country cannot manage anything (scoped RBAC).
- */
-export async function topicActorFromAuth(user: PublicUser): Promise<TopicActor> {
-  const iso = user.homeCountry?.isoCode
-  const country = iso ? await findActiveCountryByIso(iso) : null
-  return { role: user.role, countryId: country?.id ?? null }
+/** Target country of a node for the shared permission layer: null = global. */
+function targetCountryOf(topic: TopicRow): { countryId: string | null } {
+  return { countryId: topic.scope === 'COUNTRY' ? topic.countryId : null }
 }
 
-function canManageNode(actor: TopicActor, topic: TopicRow): boolean {
+function canManageNode(actor: Actor, topic: TopicRow): boolean {
   if (topic.status === 'RETIRED') return false // archived records are read-only
-  if (actor.role === 'ADMIN') return true
-  if (actor.role === 'COUNTRY_ADMIN') {
-    return (
-      topic.scope === 'COUNTRY' &&
-      topic.countryId !== null &&
-      topic.countryId === actor.countryId
-    )
-  }
-  return false
+  return can(actor, 'taxonomy:manage', targetCountryOf(topic))
 }
 
-function assertCanManage(actor: TopicActor, topic: TopicRow): void {
-  if (!canManageNode(actor, topic)) {
-    if (actor.role === 'COUNTRY_ADMIN') {
-      if (topic.scope === 'GLOBAL') {
-        throw new TaxonomyError(
-          'GLOBAL_NODES_ADMIN_ONLY',
-          'Country admins cannot modify global taxonomy nodes'
-        )
-      }
+/** Audit snapshot of a node (labels/aliases included — §13 dimensions). */
+function auditSnapshotOf(snapshot: TaxonomySnapshot, topic: TopicRow) {
+  return {
+    slug: topic.slug,
+    canonicalName: topic.canonicalName,
+    description: topic.description,
+    type: topic.type,
+    status: topic.status,
+    scope: topic.scope,
+    countryIso: countryIsoOf(snapshot, topic.countryId),
+    parentSlug: topic.parentId
+      ? snapshot.topics.find((entry) => entry.id === topic.parentId)?.slug ?? null
+      : null,
+    orderIndex: topic.orderIndex,
+    labels: topic.labels.map((label) => ({
+      language: label.languageCode,
+      name: label.name,
+      description: label.description,
+    })),
+    aliases: topic.aliases.map((alias) => ({
+      value: alias.value,
+      language: alias.languageCode,
+    })),
+  }
+}
+
+/** Records an object-level permission denial (the §20 "never cross countries" signal). */
+async function noteDenied(
+  actor: Actor,
+  operation: string,
+  reason: string,
+  topic: TopicRow | null,
+  meta?: AuditRequestMeta
+): Promise<void> {
+  await recordAudit({
+    actor: { userId: actor.userId, email: actor.email, role: actor.role },
+    action: AUDIT_ACTIONS.taxonomyDenied,
+    objectType: AUDIT_OBJECT_TYPES.topic,
+    objectId: topic?.id ?? null,
+    objectLabel: topic?.slug ?? null,
+    before: topic
+      ? { slug: topic.slug, scope: topic.scope, status: topic.status }
+      : null,
+    metadata: { attemptedOperation: operation, reason },
+    ip: meta?.ip ?? null,
+    userAgent: meta?.userAgent ?? null,
+  })
+}
+
+function assertCanManage(
+  actor: Actor,
+  topic: TopicRow,
+  operation: string,
+  meta?: AuditRequestMeta
+): void {
+  if (canManageNode(actor, topic)) return
+  // Fire-and-forget denial audit — the error below still reaches the client.
+  void noteDenied(actor, operation, denialReasonOf(actor, topic), topic, meta)
+  if (actor.role === 'COUNTRY_ADMIN') {
+    if (topic.scope === 'GLOBAL') {
       throw new TaxonomyError(
-        'COUNTRY_MISMATCH',
-        'You can only manage taxonomy extensions for your own country'
+        'GLOBAL_NODES_ADMIN_ONLY',
+        'Country admins cannot modify global taxonomy nodes'
       )
     }
-    throw new TaxonomyError('COUNTRY_MISMATCH', 'You do not have permission to manage this node')
+    throw new TaxonomyError(
+      'COUNTRY_MISMATCH',
+      'You can only manage taxonomy extensions for your own country'
+    )
   }
+  throw new TaxonomyError('COUNTRY_MISMATCH', 'You do not have permission to manage this node')
 }
 
-function permissionsFor(actor: TopicActor, topic: TopicRow, snapshot: TaxonomySnapshot): TopicPermissions {
+function denialReasonOf(actor: Actor, topic: TopicRow): string {
+  if (topic.status === 'RETIRED') return 'NODE_RETIRED'
+  if (actor.role === 'COUNTRY_ADMIN') {
+    return topic.scope === 'GLOBAL' ? 'GLOBAL_NODES_ADMIN_ONLY' : 'COUNTRY_MISMATCH'
+  }
+  return 'ROLE'
+}
+
+function permissionsFor(actor: Actor, topic: TopicRow, snapshot: TaxonomySnapshot): TopicPermissions {
   const canManage = canManageNode(actor, topic)
   const nonRetiredChildren = childrenOf(snapshot, topic.id).filter(
     (child) => child.status !== 'RETIRED'
@@ -310,7 +364,7 @@ function toPublicPath(
   })
 }
 
-function toAdminTree(snapshot: TaxonomySnapshot, topic: TopicRow, actor: TopicActor): AdminTopicNode {
+function toAdminTree(snapshot: TaxonomySnapshot, topic: TopicRow, actor: Actor): AdminTopicNode {
   const children = childrenOf(snapshot, topic.id).filter((child) =>
     actor.role === 'ADMIN'
       ? true
@@ -330,7 +384,7 @@ function toAdminTree(snapshot: TaxonomySnapshot, topic: TopicRow, actor: TopicAc
   }
 }
 
-async function toAdminDetail(actor: TopicActor, topicId: string): Promise<AdminTopicDetail> {
+async function toAdminDetail(actor: Actor, topicId: string): Promise<AdminTopicDetail> {
   const snapshot = await getTaxonomySnapshot()
   const topic = snapshot.topics.find((entry) => entry.id === topicId)
   if (!topic) throw new TaxonomyError('TOPIC_NOT_FOUND', 'Topic not found')
@@ -506,7 +560,7 @@ export async function searchTopics(input: {
 // ---------- Admin reads ----------
 
 /** Admin tree: all statuses; COUNTRY_ADMIN sees global + own-country nodes only. */
-export async function getAdminTree(actor: TopicActor): Promise<AdminTopicNode[]> {
+export async function getAdminTree(actor: Actor): Promise<AdminTopicNode[]> {
   const snapshot = await getTaxonomySnapshot()
   const roots = snapshot.topics.filter(
     (topic) =>
@@ -518,7 +572,7 @@ export async function getAdminTree(actor: TopicActor): Promise<AdminTopicNode[]>
   return roots.map((topic) => toAdminTree(snapshot, topic, actor))
 }
 
-export async function getAdminTopic(actor: TopicActor, id: string): Promise<AdminTopicDetail> {
+export async function getAdminTopic(actor: Actor, id: string): Promise<AdminTopicDetail> {
   const snapshot = await getTaxonomySnapshot()
   const topic = snapshot.topics.find((entry) => entry.id === id)
   if (!topic) throw new TaxonomyError('TOPIC_NOT_FOUND', 'Topic not found')
@@ -584,16 +638,22 @@ function assertParentRules(snapshot: TaxonomySnapshot, input: {
 
 // ---------- Admin writes ----------
 
-export async function createTopic(actor: TopicActor, input: CreateTopicInput): Promise<AdminTopicDetail> {
+export async function createTopic(
+  actor: Actor,
+  input: CreateTopicInput,
+  meta: AuditRequestMeta = {}
+): Promise<AdminTopicDetail> {
   // Scoped RBAC (§38): COUNTRY_ADMIN creates only own-country extensions.
-  if (actor.role !== 'ADMIN' && actor.role !== 'COUNTRY_ADMIN') {
+  if (!can(actor, 'taxonomy:manage')) {
     throw new TaxonomyError('COUNTRY_MISMATCH', 'You do not have permission to create taxonomy nodes')
   }
   if (actor.role === 'COUNTRY_ADMIN') {
     if (!input.parent) {
+      await noteDenied(actor, 'create', 'ROOT_ADMIN_ONLY', null, meta)
       throw new TaxonomyError('ROOT_ADMIN_ONLY', 'Only platform admins can create root domains')
     }
     if (input.scope !== 'COUNTRY') {
+      await noteDenied(actor, 'create', 'GLOBAL_NODES_ADMIN_ONLY', null, meta)
       throw new TaxonomyError('GLOBAL_NODES_ADMIN_ONLY', 'Country admins can only create country-scoped nodes')
     }
   }
@@ -656,7 +716,21 @@ export async function createTopic(actor: TopicActor, input: CreateTopicInput): P
       },
     })
     invalidateTaxonomySnapshot()
-    return toAdminDetail(actor, created.id)
+    const detail = await toAdminDetail(actor, created.id)
+    const freshSnapshot = await getTaxonomySnapshot()
+    const freshTopic = freshSnapshot.topics.find((entry) => entry.id === created.id)
+    await recordAudit({
+      actor: { userId: actor.userId, email: actor.email, role: actor.role },
+      action: AUDIT_ACTIONS.topicCreate,
+      objectType: AUDIT_OBJECT_TYPES.topic,
+      objectId: created.id,
+      objectLabel: input.slug,
+      after: freshTopic ? auditSnapshotOf(freshSnapshot, freshTopic) : detail,
+      metadata: { scope: input.scope, countryIso: input.country ?? null },
+      ip: meta.ip ?? null,
+      userAgent: meta.userAgent ?? null,
+    })
+    return detail
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       throw new TaxonomyError('SLUG_TAKEN', `Slug "${input.slug}" is already in use`)
@@ -666,14 +740,16 @@ export async function createTopic(actor: TopicActor, input: CreateTopicInput): P
 }
 
 export async function updateTopic(
-  actor: TopicActor,
+  actor: Actor,
   id: string,
-  input: UpdateTopicInput
+  input: UpdateTopicInput,
+  meta: AuditRequestMeta = {}
 ): Promise<AdminTopicDetail> {
   const snapshot = await getTaxonomySnapshot()
   const topic = snapshot.topics.find((entry) => entry.id === id)
   if (!topic) throw new TaxonomyError('TOPIC_NOT_FOUND', 'Topic not found')
-  assertCanManage(actor, topic)
+  assertCanManage(actor, topic, 'update', meta)
+  const before = auditSnapshotOf(snapshot, topic)
 
   // ---------- Move (reparent) ----------
   let parentId = topic.parentId
@@ -735,15 +811,35 @@ export async function updateTopic(
     },
   })
   invalidateTaxonomySnapshot()
-  return toAdminDetail(actor, updated.id)
+  const detail = await toAdminDetail(actor, updated.id)
+  const freshSnapshot = await getTaxonomySnapshot()
+  const freshTopic = freshSnapshot.topics.find((entry) => entry.id === updated.id)
+  await recordAudit({
+    actor: { userId: actor.userId, email: actor.email, role: actor.role },
+    action: AUDIT_ACTIONS.topicUpdate,
+    objectType: AUDIT_OBJECT_TYPES.topic,
+    objectId: topic.id,
+    objectLabel: topic.slug,
+    before,
+    after: freshTopic ? auditSnapshotOf(freshSnapshot, freshTopic) : detail,
+    metadata: { changedFields: Object.keys(input) },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return detail
 }
 
 /** Soft-delete (§36): retirement is explicit, leaf-first and reversible by admins. */
-export async function retireTopic(actor: TopicActor, id: string): Promise<AdminTopicDetail> {
+export async function retireTopic(
+  actor: Actor,
+  id: string,
+  meta: AuditRequestMeta = {}
+): Promise<AdminTopicDetail> {
   const snapshot = await getTaxonomySnapshot()
   const topic = snapshot.topics.find((entry) => entry.id === id)
   if (!topic) throw new TaxonomyError('TOPIC_NOT_FOUND', 'Topic not found')
-  assertCanManage(actor, topic)
+  assertCanManage(actor, topic, 'retire', meta)
+  const before = auditSnapshotOf(snapshot, topic)
 
   if (topic.status === 'RETIRED') {
     throw new TaxonomyError('ALREADY_RETIRED', 'This node is already retired')
@@ -763,18 +859,32 @@ export async function retireTopic(actor: TopicActor, id: string): Promise<AdminT
     data: { status: 'RETIRED' },
   })
   invalidateTaxonomySnapshot()
-  return toAdminDetail(actor, updated.id)
+  const detail = await toAdminDetail(actor, updated.id)
+  await recordAudit({
+    actor: { userId: actor.userId, email: actor.email, role: actor.role },
+    action: AUDIT_ACTIONS.topicRetire,
+    objectType: AUDIT_OBJECT_TYPES.topic,
+    objectId: topic.id,
+    objectLabel: topic.slug,
+    before,
+    after: { ...before, status: 'RETIRED' },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return detail
 }
 
 export async function setTopicLabels(
-  actor: TopicActor,
+  actor: Actor,
   id: string,
-  input: SetTopicLabelsInput
+  input: SetTopicLabelsInput,
+  meta: AuditRequestMeta = {}
 ): Promise<AdminTopicDetail> {
   const snapshot = await getTaxonomySnapshot()
   const topic = snapshot.topics.find((entry) => entry.id === id)
   if (!topic) throw new TaxonomyError('TOPIC_NOT_FOUND', 'Topic not found')
-  assertCanManage(actor, topic)
+  assertCanManage(actor, topic, 'setLabels', meta)
+  const before = auditSnapshotOf(snapshot, topic)
 
   // One label per language (§13 language labels); language must exist + be ACTIVE.
   const seen = new Set<string>()
@@ -805,18 +915,38 @@ export async function setTopicLabels(
     }
   })
   invalidateTaxonomySnapshot()
-  return toAdminDetail(actor, topic.id)
+  const detail = await toAdminDetail(actor, topic.id)
+  await recordAudit({
+    actor: { userId: actor.userId, email: actor.email, role: actor.role },
+    action: AUDIT_ACTIONS.topicLabelsSet,
+    objectType: AUDIT_OBJECT_TYPES.topic,
+    objectId: topic.id,
+    objectLabel: topic.slug,
+    before: { labels: before.labels },
+    after: {
+      labels: input.labels.map((label) => ({
+        language: label.language,
+        name: label.name,
+        description: label.description ?? null,
+      })),
+    },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return detail
 }
 
 export async function setTopicAliases(
-  actor: TopicActor,
+  actor: Actor,
   id: string,
-  input: SetTopicAliasesInput
+  input: SetTopicAliasesInput,
+  meta: AuditRequestMeta = {}
 ): Promise<AdminTopicDetail> {
   const snapshot = await getTaxonomySnapshot()
   const topic = snapshot.topics.find((entry) => entry.id === id)
   if (!topic) throw new TaxonomyError('TOPIC_NOT_FOUND', 'Topic not found')
-  assertCanManage(actor, topic)
+  assertCanManage(actor, topic, 'setAliases', meta)
+  const before = auditSnapshotOf(snapshot, topic)
 
   const seen = new Set<string>()
   for (const alias of input.aliases) {
@@ -848,5 +978,22 @@ export async function setTopicAliases(
     }
   })
   invalidateTaxonomySnapshot()
-  return toAdminDetail(actor, topic.id)
+  const detail = await toAdminDetail(actor, topic.id)
+  await recordAudit({
+    actor: { userId: actor.userId, email: actor.email, role: actor.role },
+    action: AUDIT_ACTIONS.topicAliasesSet,
+    objectType: AUDIT_OBJECT_TYPES.topic,
+    objectId: topic.id,
+    objectLabel: topic.slug,
+    before: { aliases: before.aliases },
+    after: {
+      aliases: input.aliases.map((alias) => ({
+        value: alias.value,
+        language: alias.language ?? null,
+      })),
+    },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
+  })
+  return detail
 }

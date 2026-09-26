@@ -6,17 +6,17 @@
 import { NextResponse } from 'next/server'
 
 import { fail, ok } from '@/lib/api/response'
-import { requireRole } from '@/lib/api/guard'
-import { getAdminTree, topicActorFromAuth, toTaxonomyErrorResponse } from '@/modules/taxonomy'
+import { requirePermission } from '@/lib/api/guard'
+import { getAdminTree, toTaxonomyErrorResponse } from '@/modules/taxonomy'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  const auth = await requireRole(request, ['ADMIN', 'COUNTRY_ADMIN'])
+  const auth = await requirePermission(request, 'taxonomy:manage')
   if (auth instanceof NextResponse) return auth
 
   try {
-    const actor = await topicActorFromAuth(auth.user)
+    const actor = auth.actor
     const tree = await getAdminTree(actor)
     const count = (nodes: typeof tree): number =>
       nodes.reduce((total, node) => total + 1 + count(node.children), 0)

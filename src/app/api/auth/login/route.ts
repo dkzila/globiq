@@ -3,6 +3,7 @@
  * Master Plan §4/§39 (token-based auth), §30 (no user enumeration, rate limited).
  */
 import { fail, ok, errors } from '@/lib/api/response'
+import { effectivePermissions } from '@/lib/permissions'
 import { RATE_LIMITS, checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { loginSchema, loginWithPassword, toAuthErrorResponse, fieldErrors } from '@/modules/identity-access'
 
@@ -27,8 +28,9 @@ export async function POST(request: Request) {
   try {
     const { user, grant } = await loginWithPassword(parsed.data, {
       userAgent: request.headers.get('user-agent'),
+      ip: clientIp(request),
     })
-    return ok({ user, grant })
+    return ok({ user, grant, permissions: effectivePermissions({ role: user.role }) })
   } catch (error) {
     const mapped = toAuthErrorResponse(error)
     if (mapped) return fail(mapped.message, mapped.code, mapped.status)

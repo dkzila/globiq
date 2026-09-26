@@ -9,6 +9,13 @@
  */
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
+import type { Actor } from '@/lib/permissions'
+import {
+  AUDIT_ACTIONS,
+  AUDIT_OBJECT_TYPES,
+  recordAudit,
+  type AuditActorRef,
+} from '@/modules/audit'
 import {
   findActiveCountryByIso,
   findActiveLanguageByCode,
@@ -108,11 +115,42 @@ function deriveLabel(userAgent: string | null, provided?: string): string {
   return 'Web browser'
 }
 
+// ---------- Request context (audit trail, §30) ----------
+
+export interface AuthRequestMeta {
+  userAgent: string | null
+  ip?: string | null
+}
+
+/** Builds the shared permission actor (P1-S5): role + resolved home country. */
+export async function actorFromUser(user: PublicUser): Promise<Actor> {
+  const iso = user.homeCountry?.isoCode
+  const country = iso ? await findActiveCountryByIso(iso) : null
+  return { userId: user.id, email: user.email, role: user.role, countryId: country?.id ?? null }
+}
+
+/** Records a failed login attempt (security signal for admins — §30). */
+async function noteLoginFailure(
+  attemptedEmail: string,
+  reason: string,
+  meta: AuthRequestMeta
+): Promise<void> {
+  await recordAudit({
+    actor: null,
+    action: AUDIT_ACTIONS.userLoginFailed,
+    objectType: AUDIT_OBJECT_TYPES.user,
+    objectLabel: attemptedEmail,
+    metadata: { attemptedEmail, reason },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent,
+  })
+}
+
 // ---------- Registration ----------
 
 export async function registerUser(
   input: RegisterInput,
-  meta: { userAgent: string | null } = { userAgent: null }
+  meta: AuthRequestMeta = { userAgent: null }
 ): Promise<{ user: PublicUser; grant: TokenGrant }> {
   const existing = await db.user.findUnique({ where: { email: input.email } })
   if (existing) {
@@ -174,8 +212,25 @@ export async function registerUser(
     return { user, token, session }
   })
 
+  const publicUser = toPublicUser(user)
+  await recordAudit({
+    actor: { userId: user.id, email: user.email, role: user.role },
+    action: AUDIT_ACTIONS.userRegister,
+    objectType: AUDIT_OBJECT_TYPES.user,
+    objectId: user.id,
+    objectLabel: user.email,
+    after: publicUser,
+    metadata: {
+      homeCountryIso: input.homeCountryIso ?? null,
+      preferredLanguageCode: input.preferredLanguageCode ?? null,
+      sessionId: session.id,
+    },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent,
+  })
+
   return {
-    user: toPublicUser(user),
+    user: publicUser,
     grant: buildGrant(token, session),
   }
 }
@@ -184,7 +239,7 @@ export async function registerUser(
 
 export async function loginWithPassword(
   input: LoginInput,
-  meta: { userAgent: string | null } = { userAgent: null }
+  meta: AuthRequestMeta = { userAgent: null }
 ): Promise<{ user: PublicUser; grant: TokenGrant }> {
   const user = await db.user.findUnique({
     where: { email: input.email },
@@ -193,12 +248,15 @@ export async function loginWithPassword(
 
   // Uniform error for unknown email / wrong password (§30 — no user enumeration).
   if (!user || user.status === 'DELETED' || !user.passwordHash) {
+    await noteLoginFailure(input.email, 'UNKNOWN_ACCOUNT', meta)
     throw new AuthError('INVALID_CREDENTIALS', 'Incorrect email or password')
   }
   if (user.status === 'SUSPENDED') {
+    await noteLoginFailure(input.email, 'ACCOUNT_SUSPENDED', meta)
     throw new AuthError('ACCOUNT_NOT_ACTIVE', 'This account is suspended. Contact support.')
   }
   if (!(await verifyPassword(input.password, user.passwordHash))) {
+    await noteLoginFailure(input.email, 'WRONG_PASSWORD', meta)
     throw new AuthError('INVALID_CREDENTIALS', 'Incorrect email or password')
   }
 
@@ -215,8 +273,21 @@ export async function loginWithPassword(
     db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } }),
   ])
 
+  const publicUser = toPublicUser({ ...user, lastLoginAt: new Date() })
+  await recordAudit({
+    actor: { userId: user.id, email: user.email, role: user.role },
+    action: AUDIT_ACTIONS.userLogin,
+    objectType: AUDIT_OBJECT_TYPES.user,
+    objectId: user.id,
+    objectLabel: user.email,
+    after: { lastLoginAt: publicUser.lastLoginAt },
+    metadata: { method: 'password', sessionLabel: session.label },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent,
+  })
+
   return {
-    user: toPublicUser({ ...user, lastLoginAt: new Date() }),
+    user: publicUser,
     grant: buildGrant(token, session),
   }
 }
@@ -272,7 +343,11 @@ export async function listSessions(userId: string, currentSessionId: string): Pr
   return sessions.map((s) => toPublicSession(s, s.id === currentSessionId))
 }
 
-export async function revokeSessionById(userId: string, sessionId: string): Promise<PublicSession> {
+export async function revokeSessionById(
+  userId: string,
+  sessionId: string,
+  actor?: AuditActorRef
+): Promise<PublicSession> {
   const session = await db.authSession.findFirst({
     where: { id: sessionId, userId, revokedAt: null, expiresAt: { gt: new Date() } },
   })
@@ -283,14 +358,39 @@ export async function revokeSessionById(userId: string, sessionId: string): Prom
     where: { id: session.id },
     data: { revokedAt: new Date() },
   })
+  await recordAudit({
+    actor: actor ?? null,
+    action: AUDIT_ACTIONS.sessionRevoke,
+    objectType: AUDIT_OBJECT_TYPES.authSession,
+    objectId: session.id,
+    objectLabel: session.label ?? 'Unnamed session',
+    before: { label: session.label, lastUsedAt: session.lastUsedAt.toISOString() },
+    after: { revokedAt: revoked.revokedAt?.toISOString() ?? null },
+  })
   return toPublicSession(revoked)
 }
 
 /** Logout: revoke the session that presented the current Bearer token. */
-export async function revokeCurrentSession(sessionId: string): Promise<void> {
+export async function revokeCurrentSession(
+  sessionId: string,
+  actor?: AuditActorRef,
+  meta: { ip?: string | null; userAgent?: string | null } = {}
+): Promise<void> {
+  const session = await db.authSession.findUnique({ where: { id: sessionId } })
   await db.authSession.update({
     where: { id: sessionId },
     data: { revokedAt: new Date() },
+  })
+  await recordAudit({
+    actor: actor ?? null,
+    action: AUDIT_ACTIONS.userLogout,
+    objectType: AUDIT_OBJECT_TYPES.authSession,
+    objectId: sessionId,
+    objectLabel: session?.label ?? 'Unnamed session',
+    before: { label: session?.label ?? null, revoked: false },
+    after: { revoked: true },
+    ip: meta.ip ?? null,
+    userAgent: meta.userAgent ?? null,
   })
 }
 
