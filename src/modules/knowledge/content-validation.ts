@@ -26,6 +26,7 @@ export const CONTENT_FORMATS = [
 export const CONTENT_TRANSITION_ACTIONS = [
   'submit_review',
   'send_back',
+  'schedule',
   'publish',
   'retire',
 ] as const
@@ -126,14 +127,47 @@ export const updateContentItemSchema = z.object({
 
 export type UpdateContentItemInput = z.infer<typeof updateContentItemSchema>
 
-export const contentTransitionSchema = z.object({
-  action: z.enum(CONTENT_TRANSITION_ACTIONS),
-  /**
-   * Why this revision exists (§25/§36 provenance). Required by the service on
-   * re-publish (correction cycle); optional on first publish.
-   */
-  changeSummary: z.string().trim().max(500).optional(),
-})
+export const contentTransitionSchema = z
+  .object({
+    action: z.enum(CONTENT_TRANSITION_ACTIONS),
+    /**
+     * Why this revision exists (§25/§36 provenance). Required by the service on
+     * re-publish (correction cycle); optional on first publish.
+     */
+    changeSummary: z.string().trim().max(500).optional(),
+    /**
+     * §19 step 7 (P2-S4): when a `schedule` transition goes live. Required
+     * with action="schedule" (must be in the future, at most 1 year out);
+     * rejected otherwise. ISO-8601 string.
+     */
+    scheduledFor: z.string().datetime({ offset: true }).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.action === 'schedule' && !data.scheduledFor) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['scheduledFor'],
+        message: 'A future release date/time is required to schedule content',
+      })
+    }
+    if (data.scheduledFor) {
+      const when = new Date(data.scheduledFor).getTime()
+      const now = Date.now()
+      if (Number.isNaN(when) || when <= now) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['scheduledFor'],
+          message: 'The scheduled release time must be in the future',
+        })
+      } else if (when > now + 365 * 24 * 60 * 60 * 1000) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['scheduledFor'],
+          message: 'The scheduled release time must be within the next year',
+        })
+      }
+    }
+  })
 
 export type ContentTransitionInput = z.infer<typeof contentTransitionSchema>
 

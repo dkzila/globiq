@@ -1,15 +1,16 @@
 /**
  * GET  /api/languages — privileged staff: platform language table (§38 admin
  *   surface; public consumers must discover languages via /api/countries,
- *   never a global list — §35). Anyone who can manage taxonomy (ADMIN +
- *   COUNTRY_ADMIN, for label editing since P1-S4) may read; writes stay
+ *   never a global list — §35). Readers: anyone who can manage taxonomy
+ *   (ADMIN + COUNTRY_ADMIN, label editing since P1-S4) OR content (WRITER
+ *   since P2-S4 — the content editor's language dropdown); writes stay
  *   ADMIN-only (`language:manage`).
  * POST /api/languages — admin: add a language to the platform.
  */
 import { NextResponse } from 'next/server'
 
 import { fail, ok, errors } from '@/lib/api/response'
-import { requirePermission } from '@/lib/api/guard'
+import { requireAnyPermission, requirePermission } from '@/lib/api/guard'
 import { clientIp } from '@/lib/rate-limit'
 import { fieldErrors } from '@/lib/validation'
 import {
@@ -22,7 +23,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  const auth = await requirePermission(request, 'taxonomy:manage')
+  const auth = await requireAnyPermission(request, ['taxonomy:manage', 'content:manage'])
   if (auth instanceof NextResponse) return auth
 
   try {

@@ -178,14 +178,18 @@ enum ContentFormat {
   COMPARISON // comparison rendering
 }
 
-// Lifecycle (§19 workflow, minimal until editorial roles land P2-S4; the
-// SCHEDULED state joins in P2-S4 with the editorial workspace). PUBLISHED
+// Lifecycle (§19 workflow). P2-S4 adds the editorial workspace: SCHEDULED is
+// the approved-for-future-release state (§19 step 7 "Scheduled or immediate
+// publish") — reached from IN_REVIEW via `schedule` with a future
+// scheduledForAt; the working copy is locked (what was reviewed is what
+// publishes); due items materialize to PUBLISHED lazily on read. PUBLISHED
 // content is immutable at the revision level: the public surface always reads
 // the live ContentRevision snapshot; corrections edit the working copy and
 // publish a NEW revision (§36 — previous versions preserved forever).
 enum ContentStatus {
   DRAFT // being authored; not public
-  IN_REVIEW // submitted for editorial review (full workflow P2-S4)
+  IN_REVIEW // submitted for editorial review (§19 step 2)
+  SCHEDULED // approved for release at scheduledForAt (§19 step 7) — working copy locked
   PUBLISHED // live; public reads the live revision snapshot
   RETIRED // withdrawn/archived end-of-life (§19 step 10) — read-only, like ARCHIVED
 }
@@ -233,6 +237,10 @@ model ContentItem {
   // revision carries its own provenance.
   aiAssisted     Boolean       @default(false)
   publishedRevisionId String? // live revision pointer (null = never published)
+  // §19 step 7 (P2-S4): set by the `schedule` transition (IN_REVIEW →
+  // SCHEDULED); cleared on send_back/publish. Due items are lazily
+  // materialized to PUBLISHED on read (see content-service).
+  scheduledForAt    DateTime?
   createdById    String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -330,6 +338,81 @@ model ContentSourceLink {
   @@index([sourceId])
 }
 
+// ---------- P2-S4: Editorial workspace & workflow (Master Plan §6 EditorialTask
+// row, §18 editorial roles, §19 workflow, §20 staff scopes, §38) ----------
+
+// §19 workflow steps the task can represent (configurable vocabulary). Steps
+// 2–6 are review types; CORRECTION is the §25/§19-step-9 quality loop
+// (public ContentFeedback wires into it in P8-S3); EXAM_MAPPING_REVIEW is used
+// from P3 onward. GENERAL = any other editorial work item.
+enum EditorialTaskType {
+  EDITORIAL_REVIEW // §19 step 2 — editorial review of submitted content
+  FACT_CHECK // §19 step 3 — fact/source verification (§24 Source records)
+  LOCALISATION_REVIEW // §19 step 5 — language/localisation review
+  SEO_REVIEW // §19 step 6 — metadata/indexability review
+  EXAM_MAPPING_REVIEW // §19 step 4 — exam mapping review (used from P3)
+  CORRECTION // §19 step 9 / §25 — correction work triggered by feedback
+  GENERAL
+}
+
+// Task lifecycle. OPEN (created, waiting) → IN_PROGRESS (claimed/started) →
+// RESOLVED (done) or CANCELLED (abandoned). RESOLVED/CANCELLED can be reopened
+// by editors (a reopened task returns to OPEN, clearing resolution fields).
+// Tasks are never deleted (§36 migration-safe philosophy).
+enum EditorialTaskStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
+enum EditorialTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// §6 EditorialTask row: "id, country, language, type, object_id, assignee,
+// status". The work object is a polymorphic reference (objectType + objectId —
+// ContentItem today; Questions/MockTests join in P7) with a stable display
+// label snapshot. countryId null = platform/global work (§14) — visible to
+// ADMIN only, like all global objects. Every task mutation is audited (§19).
+model EditorialTask {
+  id             String                @id @default(cuid())
+  type           EditorialTaskType
+  status         EditorialTaskStatus   @default(OPEN)
+  priority       EditorialTaskPriority @default(MEDIUM)
+  countryId      String? // null = platform/global task (ADMIN-only workspace)
+  languageId     String? // optional language dimension (§6 row)
+  objectType     String // polymorphic work-object type, e.g. "ContentItem"
+  objectId       String
+  objectLabel    String // stable snapshot for display, e.g. "slug/en/FACT_CARD"
+  title          String // short, human-readable task title
+  notes          String? // editor notes / instructions
+  resolutionNote String? // outcome recorded on resolve
+  assigneeId     String?
+  createdById    String?
+  dueAt          DateTime?
+  startedAt      DateTime?
+  resolvedAt     DateTime?
+  resolvedById   String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  country     Country?  @relation(fields: [countryId], references: [id])
+  language    Language? @relation(fields: [languageId], references: [id])
+  assignee    User?     @relation("EditorialTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy   User?     @relation("EditorialTaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  resolvedBy  User?     @relation("EditorialTaskResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([type, status])
+  @@index([countryId, status])
+  @@index([assigneeId, status])
+  @@index([objectType, objectId, status])
+}
+
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
 
 // Language is a first-class localisation dimension. `code` is the URL segment
@@ -350,9 +433,11 @@ model Language {
   // Join to countries that support this language
   countryLinks        CountryLanguage[]
   users               User[]
+  languageScopedUsers User[]          @relation("UserLanguageScope")
   topicLabels         TopicLabel[]
   topicAliases        TopicAlias[]
   contentItems        ContentItem[]
+  editorialTasks      EditorialTask[]
 
   @@index([status])
 }
@@ -377,6 +462,7 @@ model Country {
   users           User[]
   topics          Topic[] // country-scoped taxonomy extension nodes (§13)
   knowledgeUnits  KnowledgeUnit[] @relation("KnowledgeUnitCountry")
+  editorialTasks  EditorialTask[]
 
   @@index([status])
 }
@@ -406,6 +492,12 @@ model User {
   name                String?
   homeCountryId       String?
   preferredLanguageId String?
+  // P2-S4 (§18/§20): explicit staff language scope — when set on a WRITER,
+  // content/task operations narrow to this language (a Hindi-scoped writer
+  // cannot touch English representations). Null = all languages within the
+  // country scope. Set via seed/staff provisioning; self-registration never
+  // sets it (READER accounts carry no editorial scope).
+  languageScopeId     String?
   // Auth (P1-S2): token-based identity — the same Bearer-token contract serves
   // the website today and native apps later (§4, §39).
   passwordHash        String? // null reserved for future non-password auth methods
@@ -419,15 +511,20 @@ model User {
 
   homeCountry       Country?       @relation(fields: [homeCountryId], references: [id])
   preferredLanguage Language?      @relation(fields: [preferredLanguageId], references: [id])
+  languageScope     Language?     @relation("UserLanguageScope", fields: [languageScopeId], references: [id])
   authSessions      AuthSession[]
   auditLogs         AuditLog[]
   authoredKnowledgeUnits KnowledgeUnit[] @relation("KnowledgeUnitAuthor")
   authoredContentItems   ContentItem[] @relation("ContentItemAuthor")
   publishedContentRevisions ContentRevision[] @relation("ContentRevisionPublisher")
   createdSources         Source[] @relation("SourceAuthor")
+  assignedEditorialTasks EditorialTask[] @relation("EditorialTaskAssignee")
+  createdEditorialTasks  EditorialTask[] @relation("EditorialTaskCreator")
+  resolvedEditorialTasks EditorialTask[] @relation("EditorialTaskResolver")
 
   @@index([homeCountryId])
   @@index([preferredLanguageId])
+  @@index([languageScopeId])
   @@index([status])
 }
 

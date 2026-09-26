@@ -63,7 +63,7 @@ export class AuthError extends Error {
 // ---------- Serialization ----------
 
 type UserWithRelations = Prisma.UserGetPayload<{
-  include: { homeCountry: true, preferredLanguage: true }
+  include: { homeCountry: true, preferredLanguage: true, languageScope: true }
 }>
 
 function toPublicUser(user: UserWithRelations): PublicUser {
@@ -80,6 +80,9 @@ function toPublicUser(user: UserWithRelations): PublicUser {
       : null,
     preferredLanguage: user.preferredLanguage
       ? { code: user.preferredLanguage.code, name: user.preferredLanguage.name }
+      : null,
+    languageScope: user.languageScope
+      ? { code: user.languageScope.code, name: user.languageScope.name }
       : null,
     createdAt: user.createdAt.toISOString(),
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
@@ -126,7 +129,19 @@ export interface AuthRequestMeta {
 export async function actorFromUser(user: PublicUser): Promise<Actor> {
   const iso = user.homeCountry?.isoCode
   const country = iso ? await findActiveCountryByIso(iso) : null
-  return { userId: user.id, email: user.email, role: user.role, countryId: country?.id ?? null }
+  // §18/§20: resolve the explicit staff language scope (null = no narrowing).
+  let languageScopeId: string | null = null
+  if (user.languageScope?.code) {
+    const language = await findActiveLanguageByCode(user.languageScope.code)
+    languageScopeId = language?.id ?? null
+  }
+  return {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    countryId: country?.id ?? null,
+    languageScopeId,
+  }
 }
 
 /** Records a failed login attempt (security signal for admins — §30). */
@@ -197,7 +212,7 @@ export async function registerUser(
         homeCountryId,
         preferredLanguageId,
       },
-      include: { homeCountry: true, preferredLanguage: true },
+      include: { homeCountry: true, preferredLanguage: true, languageScope: true },
     })
 
     const token = generateToken()
@@ -243,7 +258,7 @@ export async function loginWithPassword(
 ): Promise<{ user: PublicUser; grant: TokenGrant }> {
   const user = await db.user.findUnique({
     where: { email: input.email },
-    include: { homeCountry: true, preferredLanguage: true },
+    include: { homeCountry: true, preferredLanguage: true, languageScope: true },
   })
 
   // Uniform error for unknown email / wrong password (§30 — no user enumeration).
@@ -312,7 +327,7 @@ export async function authenticateRequest(request: Request): Promise<AuthContext
 
   const session = await db.authSession.findUnique({
     where: { tokenHash: hashToken(token) },
-    include: { user: { include: { homeCountry: true, preferredLanguage: true } } },
+    include: { user: { include: { homeCountry: true, preferredLanguage: true, languageScope: true } } },
   })
   if (!session || session.revokedAt || session.expiresAt <= new Date()) return null
   if (session.user.status !== 'ACTIVE') return null

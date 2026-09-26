@@ -14,6 +14,8 @@ export interface PublicUser {
   emailVerified: boolean
   homeCountry: { isoCode: string; name: string } | null
   preferredLanguage: { code: string; name: string } | null
+  /** §18/§20 staff language scope (WRITER narrowing; null = unset/READER). */
+  languageScope: { code: string; name: string } | null
   createdAt: string
   lastLoginAt: string | null
 }

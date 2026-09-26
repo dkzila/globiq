@@ -39,6 +39,11 @@ const DEV_ADMIN_EMAIL = 'admin@globiq.dev'
 const DEV_ADMIN_PASSWORD = 'GlobIQ-Dev-Admin-1'
 const DEV_IN_ADMIN_EMAIL = 'in-admin@globiq.dev'
 const DEV_IN_ADMIN_PASSWORD = 'GlobIQ-Dev-INAdmin-1'
+// P2-S4 (§18/§20): dev WRITER accounts — one all-language, one Hindi-scoped.
+const DEV_WRITER_IN_EMAIL = 'writer-in@globiq.dev'
+const DEV_WRITER_IN_PASSWORD = 'GlobIQ-Dev-Writer-1'
+const DEV_WRITER_HI_EMAIL = 'writer-hi@globiq.dev'
+const DEV_WRITER_HI_PASSWORD = 'GlobIQ-Dev-Writer-Hi-1'
 
 async function main() {
   // ---------- Languages ----------
@@ -192,6 +197,40 @@ async function main() {
       emailVerifiedAt: new Date(),
       homeCountryId: india.id,
       preferredLanguageId: en.id,
+    },
+  })
+
+  // ---------- P2-S4: editorial staff (Master Plan §18/§20/§45) ----------
+  // Writers create/edit/submit content but never publish (§18); scopes are
+  // explicit country (+ optionally language) and enforced server-side (§20).
+  const writerIn = await prisma.user.upsert({
+    where: { email: DEV_WRITER_IN_EMAIL },
+    update: {}, // never overwrite live role/scope edits
+    create: {
+      email: DEV_WRITER_IN_EMAIL,
+      name: 'Dev Writer (IN, all languages)',
+      passwordHash: await hashPassword(DEV_WRITER_IN_PASSWORD),
+      role: 'WRITER',
+      status: 'ACTIVE',
+      emailVerifiedAt: new Date(),
+      homeCountryId: india.id,
+      preferredLanguageId: en.id,
+      // languageScopeId null = all languages within the IN scope
+    },
+  })
+  const writerHi = await prisma.user.upsert({
+    where: { email: DEV_WRITER_HI_EMAIL },
+    update: {},
+    create: {
+      email: DEV_WRITER_HI_EMAIL,
+      name: 'Dev Writer (IN, Hindi-scoped)',
+      passwordHash: await hashPassword(DEV_WRITER_HI_PASSWORD),
+      role: 'WRITER',
+      status: 'ACTIVE',
+      emailVerifiedAt: new Date(),
+      homeCountryId: india.id,
+      preferredLanguageId: hi.id,
+      languageScopeId: hi.id, // §20 explicit language scope — Hindi only
     },
   })
 
@@ -649,7 +688,12 @@ async function main() {
       | 'TIMELINE'
       | 'PROFILE'
       | 'COMPARISON'
-    status: 'DRAFT' | 'IN_REVIEW' | 'PUBLISHED' | 'RETIRED'
+    status: 'DRAFT' | 'IN_REVIEW' | 'SCHEDULED' | 'PUBLISHED' | 'RETIRED'
+    /** §19 step 7: required when status = SCHEDULED (future release time). */
+    scheduledForAt?: Date
+    /** Working-copy overrides for items without revisions. */
+    title?: string
+    body?: string
     revisions: RevisionSeed[] // empty for never-published items
   }
 
@@ -734,6 +778,19 @@ async function main() {
       status: 'DRAFT', // lifecycle demo — publish through the admin console
       revisions: [],
     },
+    {
+      // P2-S4 §19 step 7: a reviewed item approved for a FUTURE release —
+      // demonstrates the SCHEDULED state (locked working copy, goes-live
+      // badge, publish-now / send-back affordances, lazy materialization).
+      unitSlug: 'chandrayaan-3-landing-2023',
+      languageCode: 'en',
+      format: 'TIMELINE',
+      status: 'SCHEDULED',
+      scheduledForAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // +2 days
+      title: 'Chandrayaan programme — key milestones',
+      body: '22 October 2008 — Chandrayaan-1 launches; the Moon Impact Probe strikes near Shackleton crater.\n15 July 2019 — Chandrayaan-2 launches; its orbiter continues high-resolution mapping.\n14 July 2023 — Chandrayaan-3 launches on LVM3-M4.\n23 August 2023 — Vikram soft-lands near the lunar south pole (Shiv Shakti Point); India becomes the fourth country to soft-land on the Moon.\n23 August 2024 — the first National Space Day commemorates the landing anniversary.',
+      revisions: [],
+    },
   ]
 
   let contentSeeded = 0
@@ -759,8 +816,12 @@ async function main() {
         languageId,
         format: seed.format,
         status: seed.status,
-        title: lastRevision?.title ?? 'Untitled draft',
-        body: lastRevision?.body ?? 'Draft revision notes for the Kalinga War: 261 BCE, third regnal year of Ashoka; 13th Rock Edict records 100,000 killed and 150,000 deported; the remorse led to Dhamma Vijaya; Kalinga = present-day coastal Odisha. Editable draft — publish through the admin console.',
+        ...(seed.scheduledForAt ? { scheduledForAt: seed.scheduledForAt } : {}),
+        title: lastRevision?.title ?? seed.title ?? 'Untitled draft',
+        body:
+          lastRevision?.body ??
+          seed.body ??
+          'Draft revision notes for the Kalinga War: 261 BCE, third regnal year of Ashoka; 13th Rock Edict records 100,000 killed and 150,000 deported; the remorse led to Dhamma Vijaya; Kalinga = present-day coastal Odisha. Editable draft — publish through the admin console.',
         createdById: admin.id,
       },
     })
@@ -1012,12 +1073,150 @@ async function main() {
     linksSeeded += 1
   }
 
+  // ---------- P2-S4: Editorial workspace (Master Plan §6/§19/§45) ----------
+  // A representative board: an unclaimed localisation review (claimable by the
+  // Hindi-scoped writer), an in-progress fact check, a §25 correction request
+  // on GLOBAL-unit content (ADMIN-only board — §38 parity), and one resolved
+  // item for board variety. Seed never overwrites live task edits (§36).
+  interface TaskSeed {
+    type: 'EDITORIAL_REVIEW' | 'FACT_CHECK' | 'LOCALISATION_REVIEW' | 'SEO_REVIEW' | 'CORRECTION'
+    unitSlug: string
+    languageCode: string
+    format: string
+    title: string
+    notes?: string
+    priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+    status?: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CANCELLED'
+    assignee?: 'writer-in' | 'writer-hi' | 'in-admin'
+    dueInHours?: number
+    resolutionNote?: string
+  }
+
+  const editorialTasks: TaskSeed[] = [
+    {
+      type: 'LOCALISATION_REVIEW',
+      unitSlug: 'fundamental-rights-articles-12-35',
+      languageCode: 'hi',
+      format: 'EXPLAINER',
+      title: 'Review the Hindi Fundamental Rights explainer',
+      notes: 'Check terminology consistency (मौलिक अधिकार) against the taxonomy labels and tighten the intro.',
+      priority: 'HIGH',
+      // unassigned — the unclaimed pool (claimable by writer-hi, §20 scope)
+    },
+    {
+      type: 'FACT_CHECK',
+      unitSlug: 'chandrayaan-3-landing-2023',
+      languageCode: 'en',
+      format: 'CURRENT_EVENT_UPDATE',
+      title: 'Fact-check the National Space Day update',
+      notes: 'Verify the 23 August notification against the PIB release before the next revision.',
+      priority: 'MEDIUM',
+      status: 'IN_PROGRESS',
+      assignee: 'writer-in',
+      dueInHours: 48,
+    },
+    {
+      type: 'CORRECTION',
+      unitSlug: 'un-security-council-permanent-members',
+      languageCode: 'en',
+      format: 'EXPLAINER',
+      title: 'Correction report — UNSC membership phrasing',
+      notes: 'Reader-flagged: the phrasing on permanent membership vs veto powers needs a precise correction cycle (§25 — public feedback wiring lands P8-S3).',
+      priority: 'URGENT',
+      // GLOBAL unit → countryId null → platform task (ADMIN-only board, §38)
+    },
+    {
+      type: 'SEO_REVIEW',
+      unitSlug: 'fundamental-rights-articles-12-35',
+      languageCode: 'en',
+      format: 'FACT_CARD',
+      title: 'SEO pass on the Fundamental Rights fact card',
+      notes: 'Title length + internal links to the explainer.',
+      priority: 'LOW',
+      status: 'RESOLVED',
+      assignee: 'in-admin',
+      resolutionNote: 'Titles within bounds; cross-links added with the explainer revision.',
+    },
+  ]
+
+  const assigneesById: Record<string, string> = {
+    'writer-in': writerIn.id,
+    'writer-hi': writerHi.id,
+    'in-admin': inAdmin.id,
+  }
+
+  let tasksSeeded = 0
+  for (const seed of editorialTasks) {
+    const unit = await prisma.knowledgeUnit.findUnique({ where: { slug: seed.unitSlug } })
+    const languageId = languageIdByCode.get(seed.languageCode)
+    if (!unit || !languageId) {
+      console.warn(`[seed] skipping task for "${seed.unitSlug}/${seed.languageCode}": prerequisite missing`)
+      continue
+    }
+    const item = await prisma.contentItem.findUnique({
+      where: {
+        knowledgeUnitId_languageId_format: {
+          knowledgeUnitId: unit.id,
+          languageId,
+          format: seed.format as
+            | 'FACT_CARD'
+            | 'EXPLAINER'
+            | 'REVISION_NOTE'
+            | 'CURRENT_EVENT_UPDATE'
+            | 'TIMELINE'
+            | 'PROFILE'
+            | 'COMPARISON',
+        },
+      },
+      select: { id: true },
+    })
+    if (!item) {
+      console.warn(`[seed] skipping task "${seed.title}": content item missing`)
+      continue
+    }
+    const existing = await prisma.editorialTask.findFirst({
+      where: { objectType: 'ContentItem', objectId: item.id, type: seed.type, title: seed.title },
+      select: { id: true },
+    })
+    if (existing) continue
+
+    const status = seed.status ?? 'OPEN'
+    await prisma.editorialTask.create({
+      data: {
+        type: seed.type,
+        status,
+        priority: seed.priority ?? 'MEDIUM',
+        // §6/§14: the task inherits the work object's scope — GLOBAL units
+        // produce platform (global) tasks visible on the ADMIN board only.
+        countryId: unit.scope === 'COUNTRY' ? unit.countryId : null,
+        languageId,
+        objectType: 'ContentItem',
+        objectId: item.id,
+        objectLabel: `${unit.slug}/${seed.languageCode}/${seed.format}`,
+        title: seed.title,
+        notes: seed.notes ?? null,
+        assigneeId: seed.assignee ? assigneesById[seed.assignee] : null,
+        createdById: admin.id,
+        ...(seed.dueInHours ? { dueAt: new Date(Date.now() + seed.dueInHours * 60 * 60 * 1000) } : {}),
+        ...(status === 'IN_PROGRESS' ? { startedAt: new Date() } : {}),
+        ...(status === 'RESOLVED'
+          ? {
+              resolvedAt: new Date(),
+              resolvedById: seed.assignee ? assigneesById[seed.assignee] : null,
+              resolutionNote: seed.resolutionNote ?? null,
+            }
+          : {}),
+      },
+    })
+    tasksSeeded += 1
+  }
+
   console.log(
     `Seed complete → languages: ${[en.code, hi.code, fr.code].join(', ')} | countries: ${[
       `${india.isoCode} (default)`,
       `${uk.isoCode} (coming soon)`,
       `${france.isoCode} (coming soon)`,
-    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''})`
+    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | dev writers: ${writerIn.email} + ${writerHi.email} (Hindi-scoped) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded} | sources: ${sourceIdByUrl.size} (${linksSeeded} links${aiDraftSeeded ? ', +1 AI-assisted draft update' : ''}) | editorial tasks: ${tasksSeeded}`
   )
 }
 

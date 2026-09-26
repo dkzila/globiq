@@ -20,18 +20,26 @@ export type ContentFormatPublic =
   | 'PROFILE'
   | 'COMPARISON'
 
-export type ContentStatusPublic = 'DRAFT' | 'IN_REVIEW' | 'PUBLISHED' | 'RETIRED'
+export type ContentStatusPublic =
+  | 'DRAFT'
+  | 'IN_REVIEW'
+  | 'SCHEDULED'
+  | 'PUBLISHED'
+  | 'RETIRED'
 
 /**
- * Lifecycle transitions (§19 workflow, minimal until the editorial workspace
- * lands in P2-S4 — SCHEDULED joins there). `publish` from PUBLISHED is the
- * correction path: it appends a new immutable revision (§36) — the status
- * stays PUBLISHED and the live pointer moves.
+ * Lifecycle transitions (§19 workflow, completed by the P2-S4 editorial
+ * workspace): `schedule` moves reviewed content to SCHEDULED (§19 step 7
+ * "Scheduled or immediate publish") with a future `scheduledFor`; due
+ * SCHEDULED items materialize to PUBLISHED lazily on read (content-service).
+ * `publish` from PUBLISHED is the correction path: it appends a new immutable
+ * revision (§36) — the status stays PUBLISHED and the live pointer moves.
  */
 export type ContentTransitionAction =
-  | 'submit_review' // DRAFT → IN_REVIEW
-  | 'send_back' // IN_REVIEW → DRAFT
-  | 'publish' // IN_REVIEW → PUBLISHED (first publish) · PUBLISHED → PUBLISHED (new revision)
+  | 'submit_review' // DRAFT → IN_REVIEW (§19 step 2 — auto-opens the review task)
+  | 'send_back' // IN_REVIEW/SCHEDULED → DRAFT (needs-changes / unschedule)
+  | 'schedule' // IN_REVIEW → SCHEDULED (content:publish — approve for future release)
+  | 'publish' // IN_REVIEW/SCHEDULED → PUBLISHED (first publish) · PUBLISHED → PUBLISHED (new revision)
   | 'retire' // any live status → RETIRED (withdraw/archive, §19 step 10)
 
 /** State machine map — single source for service + UI rendering. */
@@ -40,21 +48,42 @@ export const CONTENT_TRANSITIONS: Record<
   Partial<Record<ContentTransitionAction, ContentStatusPublic>>
 > = {
   DRAFT: { submit_review: 'IN_REVIEW', retire: 'RETIRED' },
-  IN_REVIEW: { publish: 'PUBLISHED', send_back: 'DRAFT', retire: 'RETIRED' },
+  IN_REVIEW: {
+    publish: 'PUBLISHED',
+    schedule: 'SCHEDULED',
+    send_back: 'DRAFT',
+    retire: 'RETIRED',
+  },
+  // SCHEDULED = approved at review, waiting for scheduledForAt. Editors may
+  // publish early ("publish now"), send back, or retire. The lazy
+  // materializer publishes due items on read (audited as a system publish).
+  SCHEDULED: { publish: 'PUBLISHED', send_back: 'DRAFT', retire: 'RETIRED' },
   // Re-publish = correction: new revision, same status (§36).
   PUBLISHED: { publish: 'PUBLISHED', retire: 'RETIRED' },
   RETIRED: {}, // end-of-life: read-only (like ARCHIVED units, §36)
 }
 
+/** Transitions that gate on `content:publish` — the §18 editorial gate
+ * ("Writers create/edit content but cannot publish unless granted").
+ * submit_review/send_back need only content:manage. */
+export const PUBLISH_GATED_ACTIONS: ReadonlySet<ContentTransitionAction> = new Set([
+  'publish',
+  'schedule',
+  'retire',
+])
+
 /**
- * Working-copy editability per status. RETIRED is read-only. Every live
- * status may edit the working copy — for PUBLISHED items those edits are
- * STAGED: public reads always serve the live revision snapshot until a new
- * revision is published (§19 "immutable at the revision level").
+ * Working-copy editability per status. RETIRED is read-only. DRAFT/IN_REVIEW
+ * may edit freely; PUBLISHED edits are STAGED: public reads always serve the
+ * live revision snapshot until a new revision is published (§19 "immutable at
+ * the revision level"). SCHEDULED is LOCKED — what was reviewed is exactly
+ * what publishes; edits require send_back → DRAFT first (§19 review approval
+ * is the content that ships, not a later working copy).
  */
 export const CONTENT_EDITABILITY: Record<ContentStatusPublic, 'full' | 'none'> = {
   DRAFT: 'full',
   IN_REVIEW: 'full',
+  SCHEDULED: 'none', // reviewed & approved — locked until published or sent back
   PUBLISHED: 'full', // staging edits — invisible publicly until re-published
   RETIRED: 'none',
 }
@@ -142,6 +171,8 @@ export interface AdminContentItem {
   /** How many evidence links currently back this item (§24) — details via
    * /api/content/admin/items/{id}/sources. */
   sourceCount: number
+  /** §19 step 7: when a SCHEDULED item goes live (null otherwise). */
+  scheduledFor: string | null
   createdAt: string
   updatedAt: string
   /** Per-item affordances from server truth (§20/§37) — server re-checks. */

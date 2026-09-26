@@ -1,16 +1,20 @@
 /**
  * POST /api/content/admin/items/{id}/transition — lifecycle transition
- * (Master Plan §19 workflow, minimal until P2-S4):
+ * (Master Plan §19 workflow, completed in P2-S4):
  *
- *   DRAFT ─submit_review→ IN_REVIEW ─publish→ PUBLISHED ─retire→ RETIRED
- *              │ └──send_back──→ DRAFT          │
- *              └──────retire────→ RETIRED ←─────┘
+ *   DRAFT ─submit_review→ IN_REVIEW ─┬─publish→ PUBLISHED ─retire→ RETIRED
+ *              ▲   │ └─schedule→ SCHEDULED ─┬─publish (due / publish-now)─┐
+ *              │   └──send_back──→ DRAFT    └──send_back (unschedule)     │
+ *              └──────────────────────── retire ──→ RETIRED ←────────────┘
  *
  * `publish` snapshots the working copy into an immutable ContentRevision and
  * moves the live pointer. Re-publishing live content requires a changeSummary
  * (§25/§36 correction provenance) and refuses no-op publishes (NO_CHANGES).
  * Publishing requires the owning unit to be VERIFIED — a representation is
  * never more visible than its canonical record.
+ * `schedule` (§19 step 7) requires a future `scheduledFor`; due SCHEDULED
+ * items materialize to PUBLISHED lazily on read. publish/schedule/retire are
+ * gated on `content:publish` — writers submit, editors release (§18).
  */
 import { NextResponse } from 'next/server'
 

@@ -77,3 +77,41 @@ export async function requirePermission(
 
   return { user: context.user, session: context.session, actor }
 }
+
+/**
+ * Authenticated context when the caller holds ANY of `permissions` (e.g. the
+ * §38 language table serves both taxonomy and content staff). Denials are
+ * audited like requirePermission (§30).
+ */
+export async function requireAnyPermission(
+  request: Request,
+  permissions: Permission[]
+): Promise<AuthGuard | NextResponse> {
+  const context = await authenticateRequest(request)
+  if (!context) return errors.unauthorized()
+
+  const actor = await actorFromUser(context.user)
+  const held = permissions.find((permission) => can(actor, permission))
+  if (!held) {
+    await recordAudit({
+      actor: { userId: actor.userId, email: actor.email, role: actor.role },
+      action: AUDIT_ACTIONS.accessDenied,
+      objectType: AUDIT_OBJECT_TYPES.permission,
+      objectId: permissions[0] ?? 'permission',
+      objectLabel: permissions.join(' | '),
+      metadata: {
+        permissions,
+        method: request.method,
+        path: new URL(request.url).pathname,
+        reason: 'PERMISSION_DENIED',
+      },
+      ip: clientIp(request),
+      userAgent: request.headers.get('user-agent'),
+    })
+    return errors.forbidden(
+      `This operation requires one of: ${permissions.join(', ')}`
+    )
+  }
+
+  return { user: context.user, session: context.session, actor }
+}

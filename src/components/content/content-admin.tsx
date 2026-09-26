@@ -83,7 +83,7 @@ interface RevisionRef {
 
 interface AdminItem {
   id: string
-  status: 'DRAFT' | 'IN_REVIEW' | 'PUBLISHED' | 'RETIRED'
+  status: 'DRAFT' | 'IN_REVIEW' | 'SCHEDULED' | 'PUBLISHED' | 'RETIRED'
   format: string
   language: { code: string; name: string; nativeName: string | null }
   title: string
@@ -101,6 +101,7 @@ interface AdminItem {
   revisionCount: number
   aiAssisted: boolean
   sourceCount: number
+  scheduledFor: string | null
   createdAt: string
   updatedAt: string
   canEdit: boolean
@@ -117,7 +118,7 @@ interface RevisionList {
   revisions: RevisionRef[]
 }
 
-const STATUS_OPTIONS = ['', 'DRAFT', 'IN_REVIEW', 'PUBLISHED', 'RETIRED'] as const
+const STATUS_OPTIONS = ['', 'DRAFT', 'IN_REVIEW', 'SCHEDULED', 'PUBLISHED', 'RETIRED'] as const
 const FORMAT_OPTIONS = [
   'FACT_CARD',
   'EXPLAINER',
@@ -142,6 +143,7 @@ const FORMAT_HINTS: Record<string, string> = {
 const statusStyle: Record<string, string> = {
   DRAFT: 'border-zinc-200 bg-zinc-50 text-zinc-600',
   IN_REVIEW: 'border-amber-200 bg-amber-50 text-amber-700',
+  SCHEDULED: 'border-sky-200 bg-sky-50 text-sky-700',
   PUBLISHED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   RETIRED: 'border-zinc-300 bg-zinc-100 text-zinc-500',
 }
@@ -185,6 +187,10 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
   const [publishDialog, setPublishDialog] = useState(false)
   const [changeSummary, setChangeSummary] = useState('')
   const [retireConfirm, setRetireConfirm] = useState(false)
+  // §19 step 7: schedule dialog (future release time for reviewed content).
+  const [scheduleDialog, setScheduleDialog] = useState(false)
+  const [scheduleFor, setScheduleFor] = useState('')
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
 
   // Create form.
   const [createOpen, setCreateOpen] = useState(false)
@@ -221,8 +227,11 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
     }
   }, [token, unit?.scope])
 
-  const isCountryAdmin = user?.role === 'COUNTRY_ADMIN'
-  const unitReadOnlyForRole = unit?.scope === 'GLOBAL' && isCountryAdmin
+  // §20: country-scoped staff (COUNTRY_ADMIN + WRITER since P2-S4) see global
+  // units read-only — the server enforces it; this is the honest affordance.
+  const isScopedStaff = user?.role === 'COUNTRY_ADMIN' || user?.role === 'WRITER'
+  const unitReadOnlyForRole = unit?.scope === 'GLOBAL' && isScopedStaff
+  const isWriter = user?.role === 'WRITER'
 
   const languageOptions = useMemo(() => {
     if (unit?.scope === 'COUNTRY') return countryLanguages
@@ -369,14 +378,18 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
   }, [token, selected, editor, toast])
 
   const runTransition = useCallback(
-    async (action: string, summary?: string) => {
+    async (action: string, summary?: string, scheduledFor?: string) => {
       if (!token || !selected) return
       setBusyAction(action)
       try {
         const response = await fetch(`/api/content/admin/items/${selected.id}/transition`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(summary !== undefined ? { action, changeSummary: summary } : { action }),
+          body: JSON.stringify({
+            action,
+            ...(summary !== undefined ? { changeSummary: summary } : {}),
+            ...(scheduledFor !== undefined ? { scheduledFor } : {}),
+          }),
         })
         const payload = (await response.json()) as Envelope<{ item: AdminItem }>
         if (payload.status === 'ok' && payload.data) {
@@ -672,6 +685,11 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
                   )}
                 </div>
                 <p className="mt-2 text-sm font-semibold leading-snug">{item.title}</p>
+                {item.status === 'SCHEDULED' && item.scheduledFor && (
+                  <p className="mt-1 text-[10px] text-sky-600">
+                    goes live {new Date(item.scheduledFor).toLocaleString()} (§19)
+                  </p>
+                )}
                 {item.liveRevision && (
                   <p className="mt-1 text-[10px] text-zinc-400">
                     live: rev {item.liveRevision.revisionNumber} · published{' '}
@@ -693,6 +711,12 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
               <Badge variant="outline" className={`font-normal ${statusStyle[selected.status] ?? ''}`}>
                 {selected.status}
               </Badge>
+              {selected.status === 'SCHEDULED' && selected.scheduledFor && (
+                <Badge variant="outline" className="border-sky-200 bg-sky-50 font-normal text-sky-700">
+                  <Clock8 className="mr-1 h-3 w-3" aria-hidden="true" />
+                  goes live {new Date(selected.scheduledFor).toLocaleString()}
+                </Badge>
+              )}
               <Badge variant="outline" className={`font-normal ${formatStyle[selected.format] ?? ''}`}>
                 {selected.format.replace(/_/g, ' ')}
               </Badge>
@@ -757,6 +781,13 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
                 </span>
               )}
             </p>
+            {selected.status === 'SCHEDULED' && (
+              <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                Scheduled for release (§19 step 7) — the working copy is locked because review
+                approved exactly this content. Send it back to edit; it publishes automatically at
+                the scheduled time.
+              </p>
+            )}
             {selected.status === 'RETIRED' && (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 Retired items are read-only (§36) — end-of-life. Create a new representation if the
@@ -845,6 +876,27 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
                   Send back
                 </Button>
               )}
+              {selected.allowedTransitions.includes('schedule') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 border-sky-300 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                  onClick={() => {
+                    setScheduleFor('')
+                    setScheduleError(null)
+                    setScheduleDialog(true)
+                  }}
+                  disabled={busyAction !== null || !selected.unitVerified}
+                  title={
+                    selected.unitVerified
+                      ? 'Approve this content for a future release (§19 step 7)'
+                      : `The owning unit is ${selected.unit.status} — scheduling requires VERIFIED`
+                  }
+                >
+                  <Clock8 className="h-4 w-4" aria-hidden="true" />
+                  Schedule
+                </Button>
+              )}
               {selected.allowedTransitions.includes('publish') && (
                 <Button
                   size="sm"
@@ -860,7 +912,9 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
                   disabled={busyAction !== null || !selected.unitVerified}
                   title={
                     selected.unitVerified
-                      ? 'Snapshot the working copy into an immutable revision'
+                      ? selected.status === 'SCHEDULED'
+                        ? 'Publish now — overrides the scheduled time (§19 step 7)'
+                        : 'Snapshot the working copy into an immutable revision'
                       : `The owning unit is ${selected.unit.status} — publishing requires VERIFIED`
                   }
                 >
@@ -869,8 +923,17 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
                   ) : (
                     <BadgeCheck className="h-4 w-4" aria-hidden="true" />
                   )}
-                  {selected.status === 'PUBLISHED' ? 'Publish new revision' : 'Publish'}
+                  {selected.status === 'PUBLISHED'
+                    ? 'Publish new revision'
+                    : selected.status === 'SCHEDULED'
+                      ? 'Publish now'
+                      : 'Publish'}
                 </Button>
+              )}
+              {isWriter && selected.status === 'DRAFT' && selected.allowedTransitions.includes('submit_review') && (
+                <span className="text-[10px] text-zinc-400">
+                  Writers submit — editors publish, schedule &amp; retire (§18).
+                </span>
               )}
               {selected.allowedTransitions.includes('retire') && (
                 <Button
@@ -1039,6 +1102,61 @@ export function ContentAdmin({ unit, countryLanguages }: AdminProps) {
               }}
             >
               Retire
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Schedule dialog (§19 step 7 — reviewed content, future release) */}
+      <AlertDialog open={scheduleDialog} onOpenChange={setScheduleDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Schedule this content for release?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The working copy is locked (review approved exactly this content) and the item goes
+              live automatically at the scheduled time — the first read after it publishes the
+              reviewed snapshot (§19 step 7). You can still publish now or send it back.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-1.5">
+            <UILabel htmlFor="content-schedule-for">Release date &amp; time</UILabel>
+            <Input
+              id="content-schedule-for"
+              type="datetime-local"
+              value={scheduleFor}
+              onChange={(event) => {
+                setScheduleFor(event.target.value)
+                setScheduleError(null)
+              }}
+            />
+            {scheduleError ? (
+              <p className="text-xs text-red-600">{scheduleError}</p>
+            ) : (
+              <p className="text-xs text-zinc-500">
+                Must be in the future (within the next year). Timezone: your local clock.
+              </p>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={scheduleFor.trim().length === 0 || busyAction !== null}
+              onClick={() => {
+                // datetime-local has no timezone — interpret it as local time.
+                const when = new Date(scheduleFor)
+                if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+                  setScheduleError('Pick a valid future date & time.')
+                  return
+                }
+                setScheduleDialog(false)
+                void runTransition('schedule', undefined, when.toISOString())
+              }}
+            >
+              {busyAction === 'schedule' ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                'Schedule release'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

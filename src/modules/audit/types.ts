@@ -106,6 +106,12 @@ export const AUDIT_ACTIONS = {
   knowledgeDenied: 'knowledge.unit.denied',
   /** Object-level content denials (country/scope/state mismatch — §20 signal). */
   contentDenied: 'content.item.denied',
+  /** P2-S4 editorial workspace (§19 — every task mutation is audited). */
+  editorialTaskCreate: 'editorial.task.create',
+  editorialTaskUpdate: 'editorial.task.update',
+  editorialTaskTransition: 'editorial.task.transition',
+  /** Object-level editorial denials (scope/assignment mismatch — §20 signal). */
+  editorialTaskDenied: 'editorial.task.denied',
 } as const
 
 /** Object type vocabulary (§6 entities that exist so far). */
@@ -118,6 +124,7 @@ export const AUDIT_OBJECT_TYPES = {
   knowledgeUnit: 'KnowledgeUnit',
   contentItem: 'ContentItem',
   contentRevision: 'ContentRevision',
+  editorialTask: 'EditorialTask',
   source: 'Source',
   contentSourceLink: 'ContentSourceLink',
   permission: 'Permission',

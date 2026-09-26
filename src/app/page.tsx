@@ -42,6 +42,7 @@ import { ContentSection } from '@/components/content/content-section'
 import { KnowledgeSection } from '@/components/knowledge/knowledge-section'
 import { LocaleSection } from '@/components/locale/locale-section'
 import { SourceSection } from '@/components/sources/source-section'
+import { EditorialSection } from '@/components/editorial/editorial-section'
 import { TaxonomySection } from '@/components/taxonomy/taxonomy-section'
 
 // ---------- Types (mirrors /api/health contract) ----------
@@ -173,9 +174,9 @@ export default function FoundationStatusPage() {
             {PLATFORM.description} This page verifies the running foundation: identity (P1-S2),
             country/language configuration (P1-S3), canonical taxonomy (P1-S4), audit + permissions
             (P1-S5), the KnowledgeUnit canonical record (P2-S1), ContentItems with immutable
-            published revisions (P2-S2) — and now the §24 trust model: a source registry with an
-            editor verification workflow, claim/content-level citations on content, and AI-provenance
-            flags (P2-S3).
+            published revisions (P2-S2), the §24 source &amp; provenance model (P2-S3) — and now
+            the §19 editorial workspace: a task board wired to the content workflow, writer/editor
+            roles with country + language staff scopes, and scheduled publishing (P2-S4).
           </p>
 
           {/* Live status pill */}
@@ -331,6 +332,9 @@ export default function FoundationStatusPage() {
         {/* ---------- Sources & provenance (P2-S3) ---------- */}
         <SourceSection />
 
+        {/* ---------- Editorial workspace (P2-S4) ---------- */}
+        <EditorialSection />
+
         {/* ---------- Audit trail (P1-S5, ADMIN only) ---------- */}
         <AuditSection />
 
@@ -384,7 +388,7 @@ export default function FoundationStatusPage() {
           </div>
           <p className="text-sm text-zinc-600">
             One chat = one session (§41). Currently executing{' '}
-            <strong className="text-zinc-900">P2-S3 of 55 sessions</strong> in the vertical slice.
+            <strong className="text-zinc-900">P2-S4 of 55 sessions</strong> in the vertical slice.
           </p>
           <ol className="flex flex-wrap gap-2">
             {PHASES.map((phase) => (

@@ -50,7 +50,7 @@ import type {
   PublicContentItemSummary,
   PublicContentListResult,
 } from './content-types'
-import { CONTENT_EDITABILITY, CONTENT_TRANSITIONS } from './content-types'
+import { CONTENT_EDITABILITY, CONTENT_TRANSITIONS, PUBLISH_GATED_ACTIONS } from './content-types'
 import { getPublicSourcesForItem } from './source-service'
 import type {
   AdminContentListQuery,
@@ -60,6 +60,7 @@ import type {
   UpdateContentItemInput,
 } from './content-validation'
 import { bodyFitsFormat } from './content-validation'
+import { wireContentWorkflow, type ContentWorkflowEvent } from '@/modules/editorial'
 
 // ---------- Typed domain errors (mapped to HTTP by route handlers) ----------
 
@@ -79,6 +80,9 @@ export type ContentErrorCode =
   | 'FORMAT_BODY_INVALID'
   | 'COUNTRY_MISMATCH'
   | 'GLOBAL_CONTENT_ADMIN_ONLY'
+  | 'LANGUAGE_SCOPE'
+  | 'PUBLISH_NOT_PERMITTED'
+  | 'SCHEDULED_FOR_REQUIRED'
 
 const ERROR_STATUS: Record<ContentErrorCode, number> = {
   CONTENT_NOT_FOUND: 404,
@@ -96,6 +100,9 @@ const ERROR_STATUS: Record<ContentErrorCode, number> = {
   FORMAT_BODY_INVALID: 400,
   COUNTRY_MISMATCH: 403,
   GLOBAL_CONTENT_ADMIN_ONLY: 403,
+  LANGUAGE_SCOPE: 403,
+  PUBLISH_NOT_PERMITTED: 403,
+  SCHEDULED_FOR_REQUIRED: 400,
 }
 
 export class ContentError extends Error {
@@ -155,9 +162,33 @@ async function loadItem(id: string): Promise<ItemRow | null> {
   })
 }
 
-/** A representation's permission target: the OWNING unit's country scope (§14). */
-function targetOfUnit(unit: KnowledgeUnit): { countryId: string | null } {
-  return { countryId: unit.scope === 'COUNTRY' ? unit.countryId : null }
+/**
+ * A representation's permission target: the OWNING unit's country scope (§14)
+ * plus the item's language (the §20 WRITER language-scope dimension — ignored
+ * by roles without a language scope).
+ */
+function targetOfUnit(
+  unit: KnowledgeUnit,
+  languageId?: string | null
+): { countryId: string | null; languageId?: string | null } {
+  return {
+    countryId: unit.scope === 'COUNTRY' ? unit.countryId : null,
+    ...(languageId !== undefined ? { languageId } : {}),
+  }
+}
+
+/** The §19 workflow event payload for an item (task wiring). */
+function workflowItemOf(item: ItemRow): ContentWorkflowEvent['item'] {
+  const unit = item.knowledgeUnit
+  return {
+    id: item.id,
+    unitSlug: unit.slug,
+    countryId: unit.scope === 'COUNTRY' ? unit.countryId : null,
+    languageId: item.languageId,
+    languageCode: item.language.code,
+    format: item.format,
+    title: item.title,
+  }
 }
 
 /** Working-copy snapshot for audit before/after (redaction truncates bodies). */
@@ -183,7 +214,7 @@ function assertCanManageContent(
   operation: string,
   meta?: AuditRequestMeta
 ): void {
-  if (can(actor, 'content:manage', targetOfUnit(item.knowledgeUnit))) return
+  if (can(actor, 'content:manage', targetOfUnit(item.knowledgeUnit, item.languageId))) return
   void recordAudit({
     actor: { userId: actor.userId, email: actor.email, role: actor.role },
     action: AUDIT_ACTIONS.contentDenied,
@@ -193,16 +224,26 @@ function assertCanManageContent(
     before: { status: item.status, unitScope: item.knowledgeUnit.scope },
     metadata: {
       attemptedOperation: operation,
-      reason: contentDenialReason(actor, item.knowledgeUnit),
+      reason: contentDenialReason(actor, item.knowledgeUnit, item.languageId),
     },
     ip: meta?.ip ?? null,
     userAgent: meta?.userAgent ?? null,
   }).catch(() => undefined) // best-effort; recordAudit itself never throws
-  if (actor.role === 'COUNTRY_ADMIN') {
+  if (actor.role === 'COUNTRY_ADMIN' || actor.role === 'WRITER') {
     if (item.knowledgeUnit.scope === 'GLOBAL') {
       throw new ContentError(
         'GLOBAL_CONTENT_ADMIN_ONLY',
-        'Country admins cannot manage representations of global knowledge units'
+        'Country-scoped staff cannot manage representations of global knowledge units'
+      )
+    }
+    if (
+      actor.role === 'WRITER' &&
+      actor.languageScopeId &&
+      item.languageId !== actor.languageScopeId
+    ) {
+      throw new ContentError(
+        'LANGUAGE_SCOPE',
+        'This representation is outside your language scope (§20 explicit staff scopes)'
       )
     }
     throw new ContentError(
@@ -213,18 +254,35 @@ function assertCanManageContent(
   throw new ContentError('COUNTRY_MISMATCH', 'You do not have permission to manage this content')
 }
 
-function contentDenialReason(actor: Actor, unit: KnowledgeUnit): string {
-  if (actor.role === 'COUNTRY_ADMIN') {
-    return unit.scope === 'GLOBAL' ? 'GLOBAL_CONTENT_ADMIN_ONLY' : 'COUNTRY_MISMATCH'
+function contentDenialReason(
+  actor: Actor,
+  unit: KnowledgeUnit,
+  languageId?: string | null
+): string {
+  if (actor.role === 'COUNTRY_ADMIN' || actor.role === 'WRITER') {
+    if (unit.scope === 'GLOBAL') return 'GLOBAL_CONTENT_ADMIN_ONLY'
+    if (
+      actor.role === 'WRITER' &&
+      actor.languageScopeId &&
+      languageId != null &&
+      languageId !== actor.languageScopeId
+    ) {
+      return 'LANGUAGE_SCOPE'
+    }
+    return 'COUNTRY_MISMATCH'
   }
   return 'ROLE'
 }
 
-/** Admin read access (taxonomy/KU parity): ADMIN sees all; COUNTRY_ADMIN sees
- * global (read-only) + own-country content. */
+/**
+ * Admin read access (taxonomy/KU parity): ADMIN sees all; COUNTRY_ADMIN and
+ * WRITER (P2-S4 §18) see global (read-only) + own-country content — a writer's
+ * language scope narrows only what they may MANAGE, not what they may read
+ * (seeing the board's context is part of working it).
+ */
 function canReadContent(actor: Actor, unit: KnowledgeUnit): boolean {
   if (actor.role === 'ADMIN') return true
-  if (actor.role === 'COUNTRY_ADMIN') {
+  if (actor.role === 'COUNTRY_ADMIN' || actor.role === 'WRITER') {
     return unit.scope === 'GLOBAL' || unit.countryId === actor.countryId
   }
   return false
@@ -248,11 +306,17 @@ function toRevisionRef(
 async function toAdminItem(actor: Actor, item: ItemRow): Promise<AdminContentItem> {
   const unit = item.knowledgeUnit
   const topic = await getTopicIdentity(unit.topicId)
-  const canManage = can(actor, 'content:manage', targetOfUnit(unit))
+  const canManage = can(actor, 'content:manage', targetOfUnit(unit, item.languageId))
+  // §18 editorial gate: publish-class affordances only for content:publish
+  // holders (ADMIN + COUNTRY_ADMIN — writers never see them).
+  const canPublish = can(actor, 'content:publish', targetOfUnit(unit))
   const editability = CONTENT_EDITABILITY[item.status as ContentStatusPublic]
-  const transitions = Object.keys(
+  const machineTransitions = Object.keys(
     CONTENT_TRANSITIONS[item.status as ContentStatusPublic]
   ) as ContentTransitionAction[]
+  const transitions = machineTransitions.filter(
+    (action) => !PUBLISH_GATED_ACTIONS.has(action) || canPublish
+  )
   return {
     id: item.id,
     status: item.status as ContentStatusPublic,
@@ -273,11 +337,13 @@ async function toAdminItem(actor: Actor, item: ItemRow): Promise<AdminContentIte
     revisionCount: item._count.revisions,
     aiAssisted: item.aiAssisted,
     sourceCount: item._count.sourceLinks,
+    scheduledFor: item.scheduledForAt?.toISOString() ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
     canEdit: canManage && editability !== 'none',
     editability,
-    // Affordances from server truth (§20) — non-managers see none.
+    // Affordances from server truth (§20) — non-managers see none; writers
+    // never see publish-class actions (§18).
     allowedTransitions: canManage ? transitions : [],
     unitVerified: unit.status === 'VERIFIED',
   }
@@ -359,6 +425,100 @@ async function assertUnitPubliclyVisible(
   }
 }
 
+// ---------- §19 step 7: scheduled-release materialization (P2-S4) ----------
+
+/**
+ * Publishes ONE due SCHEDULED item atomically. The conditional claim
+ * (`updateMany` on status + time) makes concurrent reads safe: exactly one
+ * materialization wins; the losers see count 0 and skip. The published body
+ * is the locked working copy — exactly what review approved (§19).
+ */
+async function materializeScheduledItem(itemId: string): Promise<void> {
+  const item = await loadItem(itemId)
+  if (
+    !item ||
+    item.status !== 'SCHEDULED' ||
+    !item.scheduledForAt ||
+    item.scheduledForAt.getTime() > Date.now()
+  ) {
+    return
+  }
+  // §14 guard: a representation is never more visible than its record.
+  if (item.knowledgeUnit.status !== 'VERIFIED') return
+
+  const nextNumber = await db.$transaction(async (tx) => {
+    const claimed = await tx.contentItem.updateMany({
+      where: {
+        id: item.id,
+        status: 'SCHEDULED',
+        scheduledForAt: { lte: new Date() },
+      },
+      data: { status: 'PUBLISHED', scheduledForAt: null },
+    })
+    if (claimed.count === 0) return null // a concurrent read materialized it
+    const aggregate = await tx.contentRevision.aggregate({
+      where: { contentItemId: item.id },
+      _max: { revisionNumber: true },
+    })
+    const revisionNumber = (aggregate._max.revisionNumber ?? 0) + 1
+    const revision = await tx.contentRevision.create({
+      data: {
+        contentItemId: item.id,
+        revisionNumber,
+        title: item.title,
+        body: item.body,
+        aiAssisted: item.aiAssisted,
+        changeSummary: 'Scheduled release (§19 step 7) — published automatically at the scheduled time',
+        publishedById: null, // system publish
+      },
+    })
+    await tx.contentItem.update({
+      where: { id: item.id },
+      data: { publishedRevisionId: revision.id },
+    })
+    await wireContentWorkflow(tx, {
+      action: 'publish',
+      actorId: null,
+      item: workflowItemOf(item),
+    })
+    return revisionNumber
+  })
+  if (nextNumber == null) return
+
+  await recordAudit({
+    actor: null,
+    action: AUDIT_ACTIONS.contentItemTransition,
+    objectType: AUDIT_OBJECT_TYPES.contentItem,
+    objectId: item.id,
+    objectLabel: `${item.knowledgeUnit.slug}/${item.language.code}/${item.format}`,
+    before: { status: 'SCHEDULED', scheduledFor: item.scheduledForAt.toISOString() },
+    after: { status: 'PUBLISHED', revision: nextNumber },
+    metadata: { action: 'publish', scheduled: true, materialized: 'lazy-read' },
+  })
+}
+
+/**
+ * Publishes due SCHEDULED items lazily — the modular monolith's scheduler is
+ * "the first read after the scheduled time" (no background jobs needed).
+ * Public and admin reads both call this, scoped to what they are reading so
+ * per-request work stays bounded (§37).
+ */
+async function materializeDueScheduledContent(
+  scope?: { unitId?: string; itemId?: string }
+): Promise<void> {
+  const due = await db.contentItem.findMany({
+    where: {
+      status: 'SCHEDULED',
+      scheduledForAt: { lte: new Date() },
+      ...(scope?.unitId ? { knowledgeUnitId: scope.unitId } : {}),
+      ...(scope?.itemId ? { id: scope.itemId } : {}),
+    },
+    select: { id: true },
+    take: 25, // bounded per read
+  })
+  for (const row of due) await materializeScheduledItem(row.id)
+}
+
 // ---------- Public reads ----------
 
 /** Lists the PUBLISHED representations of one unit in the resolved country
@@ -382,6 +542,9 @@ export async function getPublicContentItems(
   })
   if (!countryRow) throw new ContentError('CONTENT_NOT_VISIBLE', 'Country not available')
   await assertUnitPubliclyVisible(unit, countryRow.id, query.country)
+
+  // §19 step 7: due scheduled releases go live before serving the list.
+  await materializeDueScheduledContent({ unitId: unit.id })
 
   const items = await db.contentItem.findMany({
     where: {
@@ -438,6 +601,8 @@ export async function getPublicContentItem(
   id: string,
   input: { country?: string }
 ): Promise<PublicContentItemDetail> {
+  // §19 step 7: a due scheduled release goes live before serving the detail.
+  await materializeDueScheduledContent({ itemId: id })
   const item = await loadItem(id)
   if (!item || item.status !== 'PUBLISHED' || !item.publishedRevision) {
     throw new ContentError('CONTENT_NOT_FOUND', 'Content not found')
@@ -487,6 +652,9 @@ export async function getAdminContentItems(
 ): Promise<AdminContentListResult> {
   assertCan(actor, 'content:manage')
 
+  // §19 step 7: due scheduled releases materialize on the workspace read too.
+  await materializeDueScheduledContent()
+
   let unitId: string | undefined
   if (query.unit) {
     const unit = await loadUnitByRef(query.unit)
@@ -501,8 +669,9 @@ export async function getAdminContentItems(
     languageId = language.id
   }
 
-  // COUNTRY_ADMIN: global (read-only) + own-country content — KU parity. The
-  // scope lives on the owning unit, so the filter rides the relation.
+  // COUNTRY_ADMIN + WRITER (P2-S4 §18): global (read-only) + own-country
+  // content — KU parity. The scope lives on the owning unit, so the filter
+  // rides the relation.
   const unitScope: Prisma.KnowledgeUnitWhereInput | undefined =
     actor.role === 'ADMIN'
       ? undefined
@@ -553,6 +722,8 @@ export async function getAdminContentItems(
 
 export async function getAdminContentItem(actor: Actor, id: string): Promise<AdminContentItem> {
   assertCan(actor, 'content:manage')
+  // §19 step 7: due scheduled releases materialize on the workspace read too.
+  await materializeDueScheduledContent({ itemId: id })
   const item = await loadItem(id)
   if (!item) throw new ContentError('CONTENT_NOT_FOUND', 'Content item not found')
   if (!canReadContent(actor, item.knowledgeUnit)) {
@@ -629,9 +800,10 @@ export async function createContentItem(
     }
   }
 
-  // Object-level scope: a representation inherits its unit's country scope.
-  if (!can(actor, 'content:manage', targetOfUnit(unit))) {
-    const reason = contentDenialReason(actor, unit)
+  // Object-level scope: a representation inherits its unit's country scope,
+  // and a language-scoped WRITER may only create in their language (§20).
+  if (!can(actor, 'content:manage', targetOfUnit(unit, language.id))) {
+    const reason = contentDenialReason(actor, unit, language.id)
     await recordAudit({
       actor: { userId: actor.userId, email: actor.email, role: actor.role },
       action: AUDIT_ACTIONS.contentDenied,
@@ -643,10 +815,20 @@ export async function createContentItem(
       ip: meta.ip ?? null,
       userAgent: meta.userAgent ?? null,
     }).catch(() => undefined)
-    if (actor.role === 'COUNTRY_ADMIN' && unit.scope === 'GLOBAL') {
+    if ((actor.role === 'COUNTRY_ADMIN' || actor.role === 'WRITER') && unit.scope === 'GLOBAL') {
       throw new ContentError(
         'GLOBAL_CONTENT_ADMIN_ONLY',
-        'Country admins can only create content for their own country\u2019s units'
+        'Country-scoped staff can only create content for their own country\u2019s units'
+      )
+    }
+    if (
+      actor.role === 'WRITER' &&
+      actor.languageScopeId &&
+      language.id !== actor.languageScopeId
+    ) {
+      throw new ContentError(
+        'LANGUAGE_SCOPE',
+        'You are language-scoped to your assigned language (§20 explicit staff scopes) — this representation is outside it'
       )
     }
     throw new ContentError(
@@ -765,6 +947,33 @@ export async function transitionContentItem(
   if (!item) throw new ContentError('CONTENT_NOT_FOUND', 'Content item not found')
   assertCanManageContent(actor, item, `transition:${input.action}`, meta)
 
+  // §18 editorial gate: publish/schedule/retire are editorial decisions —
+  // writers create, edit and submit, but never publish (§18 "cannot publish
+  // unless granted"). Denied here with an audit trail (§20/§30).
+  if (
+    PUBLISH_GATED_ACTIONS.has(input.action) &&
+    !can(actor, 'content:publish', targetOfUnit(item.knowledgeUnit))
+  ) {
+    await recordAudit({
+      actor: { userId: actor.userId, email: actor.email, role: actor.role },
+      action: AUDIT_ACTIONS.contentDenied,
+      objectType: AUDIT_OBJECT_TYPES.contentItem,
+      objectId: item.id,
+      objectLabel: `${item.knowledgeUnit.slug}/${item.language.code}/${item.format}`,
+      before: { status: item.status },
+      metadata: {
+        attemptedOperation: `transition:${input.action}`,
+        reason: 'PUBLISH_NOT_PERMITTED',
+      },
+      ip: meta.ip ?? null,
+      userAgent: meta.userAgent ?? null,
+    }).catch(() => undefined)
+    throw new ContentError(
+      'PUBLISH_NOT_PERMITTED',
+      'Writers create and edit content but cannot publish (§18) — ask an editor to publish, schedule or retire'
+    )
+  }
+
   const status = item.status as ContentStatusPublic
   const target = CONTENT_TRANSITIONS[status][input.action]
   if (!target) {
@@ -828,7 +1037,18 @@ export async function transitionContentItem(
       })
       await tx.contentItem.update({
         where: { id: item.id },
-        data: { status: 'PUBLISHED', publishedRevisionId: revision.id },
+        data: {
+          status: 'PUBLISHED',
+          publishedRevisionId: revision.id,
+          scheduledForAt: null, // publishing (incl. publish-now from SCHEDULED) clears the marker
+        },
+      })
+      // §19 wiring: resolve the item's open work items inside the same
+      // transaction so board state never lags content state.
+      await wireContentWorkflow(tx, {
+        action: 'publish',
+        actorId: actor.userId,
+        item: workflowItemOf(item),
       })
       return revisionNumber
     })
@@ -856,11 +1076,77 @@ export async function transitionContentItem(
     return toAdminItem(actor, refreshed!)
   }
 
-  // ---------- non-publish transitions (submit_review / send_back / retire) ----------
-  const updated = await db.contentItem.update({
-    where: { id: item.id },
-    data: { status: target },
-    include: ITEM_INCLUDE,
+  // ---------- schedule: approve for future release (§19 step 7) ----------
+  if (input.action === 'schedule') {
+    const when = input.scheduledFor ? new Date(input.scheduledFor) : null
+    if (!when || Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+      throw new ContentError(
+        'SCHEDULED_FOR_REQUIRED',
+        'A valid future release time is required to schedule content (§19 step 7)'
+      )
+    }
+    if (item.knowledgeUnit.status !== 'VERIFIED') {
+      throw new ContentError(
+        'UNIT_NOT_VERIFIED',
+        `The owning unit is ${item.knowledgeUnit.status} — only VERIFIED units' content can be scheduled (a representation is never more visible than its record)`
+      )
+    }
+    const formatCheck = bodyFitsFormat(item.format as ContentFormatPublic, item.body)
+    if (!formatCheck.ok) {
+      throw new ContentError('FORMAT_BODY_INVALID', formatCheck.message)
+    }
+
+    const updatedSchedule = await db.$transaction(async (tx) => {
+      const row = await tx.contentItem.update({
+        where: { id: item.id },
+        data: { status: 'SCHEDULED', scheduledForAt: when },
+        include: ITEM_INCLUDE,
+      })
+      // §19 wiring: the review cycle is complete (approval happened here);
+      // open work items resolve as "scheduled".
+      await wireContentWorkflow(tx, {
+        action: 'schedule',
+        actorId: actor.userId,
+        item: workflowItemOf(item),
+      })
+      return row
+    })
+
+    await recordAudit({
+      actor: { userId: actor.userId, email: actor.email, role: actor.role },
+      action: AUDIT_ACTIONS.contentItemTransition,
+      objectType: AUDIT_OBJECT_TYPES.contentItem,
+      objectId: item.id,
+      objectLabel: `${item.knowledgeUnit.slug}/${item.language.code}/${item.format}`,
+      before: { status: item.status },
+      after: { status: 'SCHEDULED', scheduledFor: when.toISOString() },
+      metadata: { action: 'schedule', scheduledFor: when.toISOString() },
+      ip: meta.ip ?? null,
+      userAgent: meta.userAgent ?? null,
+    })
+
+    return toAdminItem(actor, updatedSchedule)
+  }
+
+  // ---------- simple transitions (submit_review / send_back / retire) ----------
+  const updated = await db.$transaction(async (tx) => {
+    const row = await tx.contentItem.update({
+      where: { id: item.id },
+      data: {
+        status: target,
+        // send_back from SCHEDULED cancels the pending release (§19).
+        ...(input.action === 'send_back' ? { scheduledForAt: null } : {}),
+      },
+      include: ITEM_INCLUDE,
+    })
+    // §19 wiring: submit_review opens the review task; send_back resolves the
+    // cycle; retire cancels open work — all inside the same transaction.
+    await wireContentWorkflow(tx, {
+      action: input.action,
+      actorId: actor.userId,
+      item: workflowItemOf(item),
+    })
+    return row
   })
 
   await recordAudit({
@@ -870,7 +1156,12 @@ export async function transitionContentItem(
     objectId: item.id,
     objectLabel: `${item.knowledgeUnit.slug}/${item.language.code}/${item.format}`,
     before: { status: item.status },
-    after: { status: target },
+    after: {
+      status: target,
+      ...(input.action === 'send_back' && item.scheduledForAt
+        ? { scheduledForCleared: item.scheduledForAt.toISOString() }
+        : {}),
+    },
     metadata: { action: input.action },
     ip: meta.ip ?? null,
     userAgent: meta.userAgent ?? null,
