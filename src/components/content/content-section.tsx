@@ -1,16 +1,16 @@
 'use client'
 
 /**
- * GlobIQ — Knowledge Section (P2-S1)
+ * GlobIQ — Content Section (P2-S2)
  *
- * Section shell for the knowledge module on the foundation page: locale bar
- * (country → language, §35) + canonical topic picker (from the public taxonomy
- * tree, §13) + Explorer/Admin tabs. The Admin tab appears only for holders of
- * `knowledge:manage` (§38) — the server remains the sole authority on what
- * those roles may change (§20).
+ * Section shell for the ContentItem layer on the foundation page: locale bar
+ * (country → language, §35) + canonical topic picker (§13) + VERIFIED unit
+ * picker (§7 — representations attach to a canonical record) + Explorer/Admin
+ * tabs. The Admin tab appears only for holders of `content:manage` (§38);
+ * the server remains the sole authority on every operation (§20).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BrainCircuit, ShieldCheck } from 'lucide-react'
+import { FileStack, ShieldCheck } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,8 +24,8 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/stores/auth'
-import { KnowledgeAdmin } from './knowledge-admin'
-import { KnowledgeExplorer } from './knowledge-explorer'
+import { ContentAdmin } from './content-admin'
+import { ContentExplorer } from './content-explorer'
 
 interface Envelope<T> {
   status: 'ok' | 'error'
@@ -46,6 +46,17 @@ interface TreeTopic {
   children: TreeTopic[]
 }
 
+export interface PublicUnitRef {
+  id: string
+  slug: string
+  canonicalName: string
+  canonicalSummary: string | null
+  type: string
+  difficulty: string
+  scope: string
+  countryIso: string | null
+}
+
 /** Flattens the public tree into picker options (BRANCH/TOPIC nodes hold units). */
 function flattenTopics(
   nodes: TreeTopic[],
@@ -62,22 +73,30 @@ function flattenTopics(
   return out
 }
 
-export function KnowledgeSection() {
-  const privileged = useAuth((state) => state.permissions.includes('knowledge:manage'))
+export function ContentSection() {
+  const privileged = useAuth((state) => state.permissions.includes('content:manage'))
 
   const [countries, setCountries] = useState<ApiCountry[] | null>(null)
   const [countryIso, setCountryIso] = useState('IN')
   const [language, setLanguage] = useState('en')
   const [topicSlug, setTopicSlug] = useState('fundamental-rights')
-  // Query-keyed topic options (loading = key mismatch — no sync setState in effect).
+  const [unitSlug, setUnitSlug] = useState('fundamental-rights-articles-12-35')
+  const [tab, setTab] = useState<'explore' | 'admin'>('explore')
+
+  // Query-keyed option lists (loading = key mismatch — no sync setState in effect).
   const [topicState, setTopicState] = useState<{
     key: string
     topics: Array<{ slug: string; label: string; depth: number; prefix: string }>
   } | null>(null)
-  const [tab, setTab] = useState<'explore' | 'admin'>('explore')
+  const [unitState, setUnitState] = useState<{
+    key: string
+    units: PublicUnitRef[]
+  } | null>(null)
 
   const topicKey = `${countryIso}:${language}`
   const topics = topicState?.key === topicKey ? topicState.topics : null
+  const unitKey = `${countryIso}:${language}:${topicSlug}`
+  const units = unitState?.key === unitKey ? unitState.units : null
 
   useEffect(() => {
     fetch('/api/countries', { cache: 'no-store' })
@@ -93,8 +112,7 @@ export function KnowledgeSection() {
     [countries, countryIso]
   )
 
-  // Public topic options for the resolved locale (BRANCH/TOPIC nodes hold
-  // units). Loads through an async boundary — setState only after the await.
+  // Topic options for the resolved locale — async boundary (setState after await).
   useEffect(() => {
     let cancelled = false
     async function run() {
@@ -115,48 +133,84 @@ export function KnowledgeSection() {
     }
   }, [countryIso, language])
 
-  const onCountryChange = useCallback((iso: string) => {
-    setCountryIso(iso)
-    const next = countries?.find((entry) => entry.isoCode === iso)
-    setLanguage(next?.defaultLanguage?.code ?? 'en')
-  }, [countries])
+  // VERIFIED units under the selected topic (§5 chain Topic → KnowledgeUnit).
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      const response = await fetch(
+        `/api/knowledge/units?topic=${topicSlug}&country=${countryIso}&language=${language}`,
+        { cache: 'no-store' }
+      )
+      const payload = (await response.json()) as Envelope<{ units: PublicUnitRef[] }>
+      if (cancelled) return
+      setUnitState({
+        key: `${countryIso}:${language}:${topicSlug}`,
+        units: payload.status === 'ok' && payload.data ? payload.data.units : [],
+      })
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [countryIso, language, topicSlug])
+
+  const onCountryChange = useCallback(
+    (iso: string) => {
+      setCountryIso(iso)
+      const next = countries?.find((entry) => entry.isoCode === iso)
+      setLanguage(next?.defaultLanguage?.code ?? 'en')
+    },
+    [countries]
+  )
+
+  // Keep the unit selection valid for the loaded list — derived, no sync
+  // setState in effect: the first VERIFIED unit is the fallback (React 19).
+  const effectiveUnitSlug = useMemo(() => {
+    if (!units || units.length === 0) return unitSlug
+    return units.some((unit) => unit.slug === unitSlug) ? unitSlug : units[0]!.slug
+  }, [units, unitSlug])
+  const selectedUnit = useMemo(
+    () => units?.find((unit) => unit.slug === effectiveUnitSlug) ?? null,
+    [units, effectiveUnitSlug]
+  )
 
   return (
-    <section aria-labelledby="knowledge-heading" className="mt-10 space-y-4">
+    <section aria-labelledby="content-heading" className="mt-10 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <BrainCircuit className="h-5 w-5 text-emerald-600" aria-hidden="true" />
-          <h2 id="knowledge-heading" className="text-xl font-semibold tracking-tight">
-            Knowledge units — the canonical record
+          <FileStack className="h-5 w-5 text-emerald-600" aria-hidden="true" />
+          <h2 id="content-heading" className="text-xl font-semibold tracking-tight">
+            Content items — representations of the record
           </h2>
         </div>
         <Badge variant="outline" className="border-emerald-200 bg-emerald-50 font-normal text-emerald-700">
-          §7 · stored once · lifecycle §36
+          §7 · one record, many renderings · revisions §36
         </Badge>
       </div>
       <p className="max-w-3xl text-sm text-zinc-600">
-        Every unit is the single canonical truth for one piece of knowledge (§7) — country, language,
-        format and depth are <span className="font-medium text-zinc-800">rendering dimensions</span>,
-        never copies. Only <span className="font-medium text-zinc-800">VERIFIED</span> units are
-        public; verified bodies are locked — corrections run through the OUTDATED cycle with a full
-        audit trail (§36).
+        A ContentItem renders one KnowledgeUnit in <span className="font-medium text-zinc-800">one
+        language × one format</span> (§7) — the fact is never re-entered. Public reads always serve
+        the <span className="font-medium text-zinc-800">live revision snapshot</span>; corrections
+        stage in the working copy and publish a <span className="font-medium text-zinc-800">new
+        immutable revision</span> with a change summary (§36 — previous versions preserved forever).
       </p>
 
       <Card className="border-zinc-200 shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Browse context</CardTitle>
           <CardDescription>
-            Country → language → canonical topic (§5 hierarchy). Scoping is server-side (§14/§15).
+            Country → language → topic → knowledge unit (§5). Content language exposure follows the
+            country configuration (§35); scoping is server-side (§14/§15).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {/* Locale + topic bar (w-full triggers + min-w-0 cells — long labels
-              truncate instead of stretching the grid on mobile) */}
-          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* Locale + topic + unit bar (cells min-w-0 + w-full triggers so long
+              labels truncate instead of stretching the grid on mobile) */}
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="min-w-0 space-y-1.5">
-              <UILabel htmlFor="knowledge-country">Country</UILabel>
+              <UILabel htmlFor="content-country">Country</UILabel>
               <Select value={countryIso} onValueChange={onCountryChange}>
-                <SelectTrigger id="knowledge-country" className="w-full" aria-label="Select country">
+                <SelectTrigger id="content-country" className="w-full" aria-label="Select country">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -169,9 +223,9 @@ export function KnowledgeSection() {
               </Select>
             </div>
             <div className="min-w-0 space-y-1.5">
-              <UILabel htmlFor="knowledge-language">Language</UILabel>
+              <UILabel htmlFor="content-language">Language</UILabel>
               <Select value={language} onValueChange={setLanguage} disabled={!country}>
-                <SelectTrigger id="knowledge-language" className="w-full" aria-label="Select language">
+                <SelectTrigger id="content-language" className="w-full" aria-label="Select language">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -184,9 +238,9 @@ export function KnowledgeSection() {
               </Select>
             </div>
             <div className="min-w-0 space-y-1.5">
-              <UILabel htmlFor="knowledge-topic">Canonical topic</UILabel>
+              <UILabel htmlFor="content-topic">Topic</UILabel>
               <Select value={topicSlug} onValueChange={setTopicSlug} disabled={!topics}>
-                <SelectTrigger id="knowledge-topic" className="w-full" aria-label="Select topic">
+                <SelectTrigger id="content-topic" className="w-full" aria-label="Select topic">
                   <SelectValue placeholder={topics ? 'Choose a topic' : 'Loading…'} />
                 </SelectTrigger>
                 <SelectContent>
@@ -199,10 +253,27 @@ export function KnowledgeSection() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="min-w-0 space-y-1.5">
+              <UILabel htmlFor="content-unit">Knowledge unit</UILabel>
+              <Select value={effectiveUnitSlug} onValueChange={setUnitSlug} disabled={!units}>
+                <SelectTrigger id="content-unit" className="w-full" aria-label="Select knowledge unit">
+                  <SelectValue
+                    placeholder={units ? 'Choose a unit' : units === null ? 'Loading…' : 'No units here'}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {(units ?? []).map((entry) => (
+                    <SelectItem key={entry.slug} value={entry.slug}>
+                      {entry.canonicalName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Tabs */}
-          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-1" role="tablist" aria-label="Knowledge views">
+          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-1" role="tablist" aria-label="Content views">
             <button
               type="button"
               role="tab"
@@ -212,7 +283,7 @@ export function KnowledgeSection() {
                 tab === 'explore' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-800'
               }`}
             >
-              <BrainCircuit className="h-4 w-4" aria-hidden="true" />
+              <FileStack className="h-4 w-4" aria-hidden="true" />
               Explorer
             </button>
             {privileged && (
@@ -238,15 +309,13 @@ export function KnowledgeSection() {
               <Skeleton className="h-40 w-full" />
             </div>
           ) : tab === 'explore' ? (
-            <KnowledgeExplorer
-              country={countryIso}
-              language={language}
-              topic={topicSlug}
-              topics={topics ?? []}
-              onTopicChange={setTopicSlug}
-            />
+            <ContentExplorer country={countryIso} language={language} unit={selectedUnit} />
           ) : (
-            <KnowledgeAdmin />
+            <ContentAdmin
+              country={countryIso}
+              unit={selectedUnit}
+              countryLanguages={country?.languages ?? []}
+            />
           )}
         </CardContent>
       </Card>

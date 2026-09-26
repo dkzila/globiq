@@ -70,4 +70,6 @@ export const RATE_LIMITS = {
   auditRead: { limit: 60, windowMs: 60 * 1000 }, // admin audit trail reads per IP
   knowledgeRead: { limit: 60, windowMs: 60 * 1000 }, // public knowledge list/detail per IP
   knowledgeWrite: { limit: 30, windowMs: 60 * 1000 }, // admin knowledge mutations per IP
+  contentRead: { limit: 60, windowMs: 60 * 1000 }, // public content list/detail per IP
+  contentWrite: { limit: 30, windowMs: 60 * 1000 }, // admin content mutations per IP
 } as const

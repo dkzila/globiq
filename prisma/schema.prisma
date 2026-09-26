@@ -149,6 +149,7 @@ model KnowledgeUnit {
   topic     Topic   @relation("KnowledgeUnitTopic", fields: [topicId], references: [id])
   country   Country? @relation("KnowledgeUnitCountry", fields: [countryId], references: [id])
   createdBy User?   @relation("KnowledgeUnitAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  contentItems ContentItem[] // representations of this canonical record (§7, P2-S2)
 
   // Deduplication is by canonical identity (§11): within one topic, a canonical
   // name identifies exactly one unit. Never merge distinct concepts; never
@@ -158,6 +159,91 @@ model KnowledgeUnit {
   @@index([scope, countryId])
   @@index([topicId, status])
   @@index([type])
+}
+
+// ---------- P2-S2: ContentItem + revisions (Master Plan §6, §7, §19, §23, §35, §36) ----------
+
+// Representation formats (§23) — HOW a canonical record is rendered. The
+// canonical semantic type (FACT/CONCEPT/TIMELINE/…) lives on KnowledgeUnit;
+// QnA/Question/MockTest are separate entities (P7, §6 correction) — they are
+// never ContentItem formats. Each format has its own validation rules
+// (content-validation.ts) — no single unstructured HTML blob (§23 anti-pattern).
+enum ContentFormat {
+  FACT_CARD // quick-fact rendering (§22 quick fact layer)
+  EXPLAINER // detailed article
+  REVISION_NOTE // compact revision notes
+  CURRENT_EVENT_UPDATE // source-backed update (Source model itself is P2-S3)
+  TIMELINE // timeline rendering
+  PROFILE // person/place/organisation profile rendering
+  COMPARISON // comparison rendering
+}
+
+// Lifecycle (§19 workflow, minimal until editorial roles land P2-S4; the
+// SCHEDULED state joins in P2-S4 with the editorial workspace). PUBLISHED
+// content is immutable at the revision level: the public surface always reads
+// the live ContentRevision snapshot; corrections edit the working copy and
+// publish a NEW revision (§36 — previous versions preserved forever).
+enum ContentStatus {
+  DRAFT // being authored; not public
+  IN_REVIEW // submitted for editorial review (full workflow P2-S4)
+  PUBLISHED // live; public reads the live revision snapshot
+  RETIRED // withdrawn/archived end-of-life (§19 step 10) — read-only, like ARCHIVED
+}
+
+// The publishable representation (§7): one KnowledgeUnit's truth rendered in
+// ONE language and ONE format. Identity (unit + language + format) is
+// immutable post-create — the same migration-safe philosophy as the KU slug.
+// title/body are the WORKING COPY (editorial staging); published snapshots
+// live only in ContentRevision. Country scope is inherited from the Knowledge
+// Unit — a representation is never more visible than its canonical record.
+model ContentItem {
+  id             String        @id @default(cuid())
+  knowledgeUnitId String
+  languageId     String
+  format         ContentFormat
+  status         ContentStatus @default(DRAFT)
+  title          String // working copy (current editing state)
+  body           String // working copy — public reads never touch this
+  publishedRevisionId String? // live revision pointer (null = never published)
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  knowledgeUnit    KnowledgeUnit    @relation(fields: [knowledgeUnitId], references: [id])
+  language         Language         @relation(fields: [languageId], references: [id])
+  createdBy        User?            @relation("ContentItemAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  revisions        ContentRevision[] @relation("ContentItemRevisions")
+  publishedRevision ContentRevision? @relation("LiveContentRevision", fields: [publishedRevisionId], references: [id])
+
+  // One representation per (unit, language, format) — the §7/§11 canonical-
+  // identity rule applied to representations: never duplicate the same
+  // rendering; a second explainer in the same language is duplication.
+  @@unique([knowledgeUnitId, languageId, format])
+  @@index([status])
+  @@index([knowledgeUnitId, status])
+  @@index([languageId, status])
+}
+
+// Immutable published snapshot (§36 "Published content revisions preserve
+// previous versions"). Rows are NEVER updated or deleted — publishing again
+// appends revision N+1 and moves the ContentItem's live pointer. Every
+// correction carries a changeSummary (§25/§36 provenance — never a silent edit).
+model ContentRevision {
+  id            String   @id @default(cuid())
+  contentItemId String
+  revisionNumber Int // 1-based, deterministic within the item
+  title         String // immutable snapshot at publish time
+  body          String // immutable snapshot at publish time
+  changeSummary String? // why this revision exists (required on re-publish)
+  publishedById String?
+  publishedAt   DateTime @default(now())
+
+  contentItem ContentItem @relation("ContentItemRevisions", fields: [contentItemId], references: [id], onDelete: Cascade)
+  publishedBy User?       @relation("ContentRevisionPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+  liveFor     ContentItem[] @relation("LiveContentRevision")
+
+  @@unique([contentItemId, revisionNumber])
+  @@index([contentItemId, publishedAt])
 }
 
 // ---------- P1-S1: Country & Language configuration (Master Plan §6, §14, §35) ----------
@@ -182,6 +268,7 @@ model Language {
   users               User[]
   topicLabels         TopicLabel[]
   topicAliases        TopicAlias[]
+  contentItems        ContentItem[]
 
   @@index([status])
 }
@@ -251,6 +338,8 @@ model User {
   authSessions      AuthSession[]
   auditLogs         AuditLog[]
   authoredKnowledgeUnits KnowledgeUnit[] @relation("KnowledgeUnitAuthor")
+  authoredContentItems   ContentItem[] @relation("ContentItemAuthor")
+  publishedContentRevisions ContentRevision[] @relation("ContentRevisionPublisher")
 
   @@index([homeCountryId])
   @@index([preferredLanguageId])

@@ -1,5 +1,5 @@
 /**
- * GlobIQ — P1-S1 + P1-S2 + P1-S4 Seed
+ * GlobIQ — P1-S1 + P1-S2 + P1-S4 + P2-S1 + P2-S2 Seed
  * Master Plan §45 (Seed Data Strategy): intentionally small but structurally rich.
  *
  * P1-S1 scope: languages + countries (India = default root market, English default).
@@ -14,6 +14,13 @@
  * country-scoped extensions (IN), nested branch→topic nodes, en/hi labels and
  * aliases — plus one dev COUNTRY_ADMIN (IN) to exercise scoped RBAC (§38).
  * Re-seeding never overwrites admin edits made through the CRUD APIs (§36).
+ *
+ * P2-S1 scope: structurally rich knowledge units (§45) — types, difficulties,
+ * scopes, lifecycle statuses (one DRAFT for the transition demo).
+ *
+ * P2-S2 scope: ContentItems + revisions — multiple formats (§23), languages
+ * (en/hi, §35), a two-revision correction (§36 preservation + provenance) and
+ * one DRAFT for the lifecycle demo.
  *
  * Run: bun run db:seed
  */
@@ -614,12 +621,176 @@ async function main() {
     knowledgeSeeded += 1
   }
 
+  // ---------- P2-S2: ContentItems + revisions (Master Plan §45) ----------
+  // Structurally rich representations (§7): multiple formats (§23), languages
+  // (§35 — Hindi demo), statuses, and one two-revision correction (§36 — the
+  // previous version is preserved with provenance). Seed writes never
+  // overwrite live edits made through the CRUD APIs (§36).
+
+  interface RevisionSeed {
+    title: string
+    body: string
+    changeSummary?: string
+    publishedAt?: Date
+  }
+
+  interface ContentSeed {
+    unitSlug: string
+    languageCode: string
+    format:
+      | 'FACT_CARD'
+      | 'EXPLAINER'
+      | 'REVISION_NOTE'
+      | 'CURRENT_EVENT_UPDATE'
+      | 'TIMELINE'
+      | 'PROFILE'
+      | 'COMPARISON'
+    status: 'DRAFT' | 'IN_REVIEW' | 'PUBLISHED' | 'RETIRED'
+    revisions: RevisionSeed[] // empty for never-published items
+  }
+
+  const contentItems: ContentSeed[] = [
+    {
+      unitSlug: 'fundamental-rights-articles-12-35',
+      languageCode: 'en',
+      format: 'EXPLAINER',
+      status: 'PUBLISHED',
+      revisions: [
+        {
+          title: 'Fundamental Rights (Articles 12–35) — Complete Explainer',
+          body: 'Fundamental Rights, enshrined in Part III of the Constitution of India (Articles 12–35), are justiciable guarantees available against the State as defined by Article 12. Article 13 adds teeth: any law inconsistent with these rights is void. The six rights — Equality (14–18), Freedom (19–22), Against Exploitation (23–24), Freedom of Religion (25–28), Cultural & Educational (29–30) and Constitutional Remedies (32) — are enforceable through the writ jurisdiction of the Supreme Court and the High Courts. Landmark expansions include Maneka Gandhi v. Union of India (1978), which read Article 21\'s "right to life and personal liberty" expansively to include dignity and due process. For exams, anchor on the article ranges, the writs (habeas corpus, mandamus, prohibition, certiorari, quo warranto), and the distinction between Fundamental Rights and Directive Principles.',
+          publishedAt: new Date('2025-06-10T09:00:00Z'),
+        },
+      ],
+    },
+    {
+      unitSlug: 'fundamental-rights-articles-12-35',
+      languageCode: 'en',
+      format: 'FACT_CARD',
+      status: 'PUBLISHED',
+      revisions: [
+        {
+          title: 'Fundamental Rights — Quick Facts',
+          body: 'Part III, Articles 12–35: six Fundamental Rights — Equality, Freedom, Against Exploitation, Religion, Cultural & Educational, Constitutional Remedies. Article 32 (writ jurisdiction) was called the "heart and soul" of the Constitution by Dr B R Ambedkar.',
+          publishedAt: new Date('2025-06-10T09:30:00Z'),
+        },
+      ],
+    },
+    {
+      unitSlug: 'fundamental-rights-articles-12-35',
+      languageCode: 'hi',
+      format: 'EXPLAINER',
+      status: 'PUBLISHED',
+      revisions: [
+        {
+          title: 'मौलिक अधिकार (अनुच्छेद 12–35) — व्याख्या',
+          body: 'भारतीय संविधान के भाग III (अनुच्छेद 12–35) में अंतर्निहित मौलिक अधिकार न्यायोचित गारंटियाँ हैं, जो अनुच्छेद 12 में परिभाषित "राज्य" के विरुद्ध प्राप्त करने योग्य हैं। छह अधिकार हैं: समता (14–18), स्वतंत्रता (19–22), शोषण के विरुद्ध (23–24), धार्मिक स्वतंत्रता (25–28), सांस्कृतिक और शैक्षिक (29–30), तथा संवैधानिक उपचार (32)। डॉ. बी. आर. अंबेडकर ने अनुच्छेद 32 को संविधान का "हृदय और आत्मा" कहा, क्योंकि बिना उपचार के अधिकार अर्थहीन हैं। मनेका गांधी बनाम भारत संघ (1978) ने अनुच्छेद 21 को व्यापक रूप से पढ़ा। परीक्षा के लिए अनुच्छेद सीमाएँ, रिट (बंदी प्रत्यक्षीकरण, परमादेश, निषेध, प्रतिकूल आदेश, अधिकार पृच्छा) और मौलिक अधिकार बनाम नीति निदेशक तत्वों का अंतर याद रखें।',
+          publishedAt: new Date('2025-07-01T10:00:00Z'),
+        },
+      ],
+    },
+    {
+      unitSlug: 'un-security-council-permanent-members',
+      languageCode: 'en',
+      format: 'EXPLAINER',
+      status: 'PUBLISHED',
+      revisions: [
+        {
+          title: 'The UN Security Council and the P5 — Explainer',
+          body: 'The United Nations Security Council (UNSC) is the UN organ with primary responsibility for international peace and security, established by Chapter V of the UN Charter in 1945. It has 15 members: the five permanent members (P5 — China, France, Russia, the United Kingdom and the United States), holding veto power over substantive resolutions, and ten non-permanent members elected for two-year terms without immediate re-election. Substantive decisions need nine affirmative votes including no P5 veto. Reform debates — including India\'s long-standing claim to a permanent seat, supported by the G4 (Brazil, Germany, India, Japan) — run through the Intergovernmental Negotiations (IGN) process. For exams, remember: 15 members, 5 permanent, 10 elected, 9 votes needed, one veto blocks.',
+          publishedAt: new Date('2025-06-15T08:00:00Z'),
+        },
+      ],
+    },
+    {
+      unitSlug: 'chandrayaan-3-landing-2023',
+      languageCode: 'en',
+      format: 'FACT_CARD',
+      status: 'PUBLISHED',
+      revisions: [
+        {
+          title: 'Chandrayaan-3 Landing — Fact Card',
+          // Rev 1 carries a deliberate factual slip, corrected in rev 2 — the
+          // §25/§36 correction demo (previous version preserved with provenance).
+          body: 'Chandrayaan-3 soft-landed near the lunar south pole on 23 August 2023, making India the third country to land on the Moon. The landing site is named "Shiv Shakti Point", and 23 August is observed as National Space Day.',
+          publishedAt: new Date('2025-06-20T12:00:00Z'),
+        },
+        {
+          title: 'Chandrayaan-3 Landing — Fact Card',
+          body: 'Chandrayaan-3 soft-landed its Vikram lander near the lunar south pole on 23 August 2023, making India the FOURTH country to achieve a Moon soft landing (after the USSR, USA and China) and the first near the south pole. Launched 14 July 2023 on LVM3-M4, the landing site is "Shiv Shakti Point", and 23 August is observed as National Space Day.',
+          changeSummary: 'Corrected: India was the fourth country to soft-land on the Moon (after USSR, USA, China), not the third. Added launch date and vehicle.',
+          publishedAt: new Date('2025-09-15T11:00:00Z'),
+        },
+      ],
+    },
+    {
+      unitSlug: 'ashoka-kalinga-war-261-bce',
+      languageCode: 'en',
+      format: 'REVISION_NOTE',
+      status: 'DRAFT', // lifecycle demo — publish through the admin console
+      revisions: [],
+    },
+  ]
+
+  let contentSeeded = 0
+  for (const seed of contentItems) {
+    const unit = await prisma.knowledgeUnit.findUnique({ where: { slug: seed.unitSlug } })
+    const languageId = languageIdByCode.get(seed.languageCode)
+    if (!unit || !languageId) {
+      console.warn(`[seed] skipping content for "${seed.unitSlug}/${seed.languageCode}": unit or language missing`)
+      continue
+    }
+
+    // Never overwrite live edits (§36) — only create when absent.
+    const existing = await prisma.contentItem.findUnique({
+      where: { knowledgeUnitId_languageId_format: { knowledgeUnitId: unit.id, languageId, format: seed.format } },
+      select: { id: true },
+    })
+    if (existing) continue
+
+    const lastRevision = seed.revisions[seed.revisions.length - 1]
+    const item = await prisma.contentItem.create({
+      data: {
+        knowledgeUnitId: unit.id,
+        languageId,
+        format: seed.format,
+        status: seed.status,
+        title: lastRevision?.title ?? 'Untitled draft',
+        body: lastRevision?.body ?? 'Draft revision notes for the Kalinga War: 261 BCE, third regnal year of Ashoka; 13th Rock Edict records 100,000 killed and 150,000 deported; the remorse led to Dhamma Vijaya; Kalinga = present-day coastal Odisha. Editable draft — publish through the admin console.',
+        createdById: admin.id,
+      },
+    })
+
+    let lastRevisionId: string | null = null
+    for (const [index, revision] of seed.revisions.entries()) {
+      const created = await prisma.contentRevision.create({
+        data: {
+          contentItemId: item.id,
+          revisionNumber: index + 1,
+          title: revision.title,
+          body: revision.body,
+          changeSummary: revision.changeSummary ?? null,
+          publishedById: admin.id,
+          publishedAt: revision.publishedAt ?? new Date(),
+        },
+      })
+      lastRevisionId = created.id
+    }
+    if (seed.status === 'PUBLISHED' && lastRevisionId) {
+      await prisma.contentItem.update({
+        where: { id: item.id },
+        data: { publishedRevisionId: lastRevisionId },
+      })
+    }
+    contentSeeded += 1
+  }
+
   console.log(
     `Seed complete → languages: ${[en.code, hi.code, fr.code].join(', ')} | countries: ${[
       `${india.isoCode} (default)`,
       `${uk.isoCode} (coming soon)`,
       `${france.isoCode} (coming soon)`,
-    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded}`
+    ].join(', ')} | dev admin: ${admin.email} (ADMIN) | dev IN admin: ${inAdmin.email} (COUNTRY_ADMIN) | taxonomy: ${topicIdBySlug.size} nodes | knowledge units: ${knowledgeSeeded} | content items: ${contentSeeded}`
   )
 }
 

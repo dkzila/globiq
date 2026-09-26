@@ -38,6 +38,7 @@ import { MODULES } from '@/modules'
 import { AccountSection } from '@/components/auth/account-section'
 import { HeaderAuth } from '@/components/auth/header-auth'
 import { AuditSection } from '@/components/audit/audit-section'
+import { ContentSection } from '@/components/content/content-section'
 import { KnowledgeSection } from '@/components/knowledge/knowledge-section'
 import { LocaleSection } from '@/components/locale/locale-section'
 import { TaxonomySection } from '@/components/taxonomy/taxonomy-section'
@@ -140,7 +141,7 @@ export default function FoundationStatusPage() {
               variant="outline"
               className="hidden shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 sm:inline-flex"
             >
-              Phase 2 · Session 1 — Knowledge Units
+              Phase 2 · Session 2 — Content Items & Revisions
             </Badge>
             <HeaderAuth />
           </div>
@@ -170,8 +171,8 @@ export default function FoundationStatusPage() {
           <p className="max-w-2xl text-base text-zinc-600 sm:text-lg">
             {PLATFORM.description} This page verifies the running foundation: identity (P1-S2),
             country/language configuration (P1-S3), canonical taxonomy (P1-S4), audit + permissions
-            (P1-S5) — and now the KnowledgeUnit: the canonical semantic record every future module
-            (content, exams, personalisation) renders from, with its full lifecycle (P2-S1).
+            (P1-S5), the KnowledgeUnit canonical record (P2-S1) — and now ContentItems: publishable
+            representations in one language × one format, with immutable published revisions (P2-S2).
           </p>
 
           {/* Live status pill */}
@@ -321,6 +322,9 @@ export default function FoundationStatusPage() {
         {/* ---------- Knowledge units (P2-S1) ---------- */}
         <KnowledgeSection />
 
+        {/* ---------- Content items & revisions (P2-S2) ---------- */}
+        <ContentSection />
+
         {/* ---------- Audit trail (P1-S5, ADMIN only) ---------- */}
         <AuditSection />
 
@@ -374,7 +378,7 @@ export default function FoundationStatusPage() {
           </div>
           <p className="text-sm text-zinc-600">
             One chat = one session (§41). Currently executing{' '}
-            <strong className="text-zinc-900">P2-S1 of 55 sessions</strong> in the vertical slice.
+            <strong className="text-zinc-900">P2-S2 of 55 sessions</strong> in the vertical slice.
           </p>
           <ol className="flex flex-wrap gap-2">
             {PHASES.map((phase) => (

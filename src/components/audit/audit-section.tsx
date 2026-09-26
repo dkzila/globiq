@@ -374,7 +374,7 @@ export function AuditSection() {
 
           {/* Table */}
           <div className="overflow-hidden rounded-lg border border-zinc-200">
-            <div className="globiq-scroll max-h-[28rem] overflow-y-auto">
+            <div className="globiq-scroll max-h-[28rem] overflow-x-auto overflow-y-auto">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-zinc-50">
                   <TableRow className="hover:bg-zinc-50">

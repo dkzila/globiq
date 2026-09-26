@@ -29,6 +29,7 @@ export type UserRole = 'READER' | 'WRITER' | 'COUNTRY_ADMIN' | 'ADMIN'
 export type Permission =
   | 'taxonomy:manage' // create/update/retire taxonomy nodes (country-scoped for COUNTRY_ADMIN)
   | 'knowledge:manage' // create/edit/transition KnowledgeUnits (country-scoped for COUNTRY_ADMIN)
+  | 'content:manage' // create/edit/publish ContentItems + revisions (country-scoped for COUNTRY_ADMIN; WRITER lands P2-S4)
   | 'country-config:manage' // platform country configuration (ADMIN only — §14/§38)
   | 'language:manage' // platform language registry (ADMIN only — §35)
   | 'audit:read' // read the accountability trail (ADMIN only in P1)
@@ -69,12 +70,13 @@ const ROLE_CATEGORY_GRANTS: Record<UserRole, Permission[]> = {
   ADMIN: [
     'taxonomy:manage',
     'knowledge:manage',
+    'content:manage',
     'country-config:manage',
     'language:manage',
     'audit:read',
     'sessions:manage-own',
   ],
-  COUNTRY_ADMIN: ['taxonomy:manage', 'knowledge:manage', 'sessions:manage-own'],
+  COUNTRY_ADMIN: ['taxonomy:manage', 'knowledge:manage', 'content:manage', 'sessions:manage-own'],
   WRITER: ['sessions:manage-own'],
   READER: ['sessions:manage-own'],
 }
@@ -92,11 +94,13 @@ export function can(
   if (!ROLE_CATEGORY_GRANTS[actor.role].includes(permission)) return false
   if (actor.role === 'ADMIN') return true
 
-  // COUNTRY_ADMIN: the country-scoped permissions — taxonomy (P1-S4) and
-  // knowledge (P2-S1) follow the same object-level narrowing rule.
+  // COUNTRY_ADMIN: the country-scoped permissions — taxonomy (P1-S4), knowledge
+  // (P2-S1) and content (P2-S2) follow the same object-level narrowing rule.
   if (
     actor.role === 'COUNTRY_ADMIN' &&
-    (permission === 'taxonomy:manage' || permission === 'knowledge:manage')
+    (permission === 'taxonomy:manage' ||
+      permission === 'knowledge:manage' ||
+      permission === 'content:manage')
   ) {
     if (!target) return true // category gate — object checks still apply
     return target.countryId != null && target.countryId === actor.countryId
@@ -132,6 +136,7 @@ export function effectivePermissions(actor: Pick<Actor, 'role'>): Permission[] {
 export const PERMISSION_LABELS: Record<Permission, string> = {
   'taxonomy:manage': 'Manage taxonomy (own country)',
   'knowledge:manage': 'Manage knowledge units (own country)',
+  'content:manage': 'Manage content items & revisions (own country)',
   'country-config:manage': 'Manage country configuration',
   'language:manage': 'Manage languages',
   'audit:read': 'Read audit trail',

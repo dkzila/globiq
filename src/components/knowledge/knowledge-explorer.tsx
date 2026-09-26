@@ -218,7 +218,7 @@ export function KnowledgeExplorer({ country, language, topic, topics, onTopicCha
             Type
           </UILabel>
           <Select value={typeFilter || 'all'} onValueChange={(value) => setTypeFilter(value === 'all' ? '' : value)}>
-            <SelectTrigger id="ku-type-filter" className="h-9 bg-white" aria-label="Filter by type">
+            <SelectTrigger id="ku-type-filter" className="h-9 w-full bg-white" aria-label="Filter by type">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -239,7 +239,7 @@ export function KnowledgeExplorer({ country, language, topic, topics, onTopicCha
             value={difficultyFilter || 'all'}
             onValueChange={(value) => setDifficultyFilter(value === 'all' ? '' : value)}
           >
-            <SelectTrigger id="ku-difficulty-filter" className="h-9 bg-white" aria-label="Filter by difficulty">
+            <SelectTrigger id="ku-difficulty-filter" className="h-9 w-full bg-white" aria-label="Filter by difficulty">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
