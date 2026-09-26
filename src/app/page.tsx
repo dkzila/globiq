@@ -1,14 +1,15 @@
 'use client'
 
 /**
- * GlobIQ — Foundation Status Page (P1-S1 → P3-S4)
+ * GlobIQ — Foundation Status Page (P1-S1 → P3-S5)
  *
  * Temporary homepage: proves the foundation end-to-end (database, API-first
  * pattern, module registry, token-based identity, the canonical content
  * stack, the §22 reading experience, the country-scoped exam layer with its
  * §36 versioned structures, version-pinned syllabus trees, the §8
- * exam-mapping requirement layer and the §11 multi-exam combination engine)
- * until the real India discovery homepage lands in P4-S2 (Master Plan §34).
+ * exam-mapping requirement layer, the §11 multi-exam combination engine and
+ * the exam-facing pages with their coverage displays) until the real India
+ * discovery homepage lands in P4-S2 (Master Plan §34).
  * This page consumes the same /api endpoints a future mobile client would
  * use (§4, §39).
  */
@@ -47,6 +48,7 @@ import { ExamsSection } from '@/components/exams/exams-section'
 import { SyllabusSection } from '@/components/exams/syllabus-section'
 import { MappingSection } from '@/components/exams/mapping-section'
 import { CombinedSection } from '@/components/exams/combined-section'
+import { ExamPageSection } from '@/components/exams/exam-page-section'
 import { KnowledgeSection } from '@/components/knowledge/knowledge-section'
 import { LocaleSection } from '@/components/locale/locale-section'
 import { SourceSection } from '@/components/sources/source-section'
@@ -152,7 +154,7 @@ export default function FoundationStatusPage() {
               variant="outline"
               className="hidden shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 sm:inline-flex"
             >
-              Phase 3 · Session 4 — Combined-Exam Engine
+              Phase 3 · Session 5 — Exam-Facing Pages
             </Badge>
             <HeaderAuth />
           </div>
@@ -187,9 +189,10 @@ export default function FoundationStatusPage() {
             editorial workspace with writer/editor roles and scheduled publishing (P2-S4), the
             §22 reading experience (P2-S5), the exam layer — country-scoped exam definitions
             with §36 versioned structures (P3-S1) — version-pinned syllabus trees (P3-S2), the
-            §8 exam-mapping requirement layer (P3-S3) and now the §11 multi-exam combination
-            engine (P3-S4): one canonical unit once, at the deepest required depth, badged with
-            every covering exam — computed live, never stored.
+            §8 exam-mapping requirement layer (P3-S3), the §11 multi-exam combination engine
+            (P3-S4) and now the exam-facing pages (P3-S5): one exam&apos;s coverage display,
+            grouped by syllabus node with every §8 requirement visible — and the knowledge
+            page&apos;s mirror — which exams need a unit, at what depth.
           </p>
 
           {/* Live status pill */}
@@ -363,6 +366,9 @@ export default function FoundationStatusPage() {
         {/* ---------- Combined-exam engine — §11 union queue (P3-S4) ---------- */}
         <CombinedSection />
 
+        {/* ---------- Exam page — §22 exam overview + coverage (P3-S5) ---------- */}
+        <ExamPageSection />
+
         {/* ---------- Audit trail (P1-S5, ADMIN only) ---------- */}
         <AuditSection />
 
@@ -416,7 +422,7 @@ export default function FoundationStatusPage() {
           </div>
           <p className="text-sm text-zinc-600">
             One chat = one session (§41). Currently executing{' '}
-            <strong className="text-zinc-900">P3-S4 of 55 sessions</strong> in the vertical slice.
+            <strong className="text-zinc-900">P3-S5 of 55 sessions</strong> in the vertical slice.
           </p>
           <ol className="flex flex-wrap gap-2">
             {PHASES.map((phase) => (

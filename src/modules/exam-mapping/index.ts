@@ -1,5 +1,5 @@
 /**
- * GlobIQ — Exam Mapping module (Master Plan §28, §43 P3-S3…S4)
+ * GlobIQ — Exam Mapping module (Master Plan §28, §43 P3-S3…S5)
  *
  * Public interface. Other modules and route handlers import from here only.
  * Internal files may change without notice (modular monolith rule, §28).
@@ -18,6 +18,11 @@
  * by priority/likelihood/freshness). Single-exam mode is the same call with
  * one ref. Nothing is stored (§46.3). Until P5-S1 wires follows, clients
  * pass the exam set explicitly.
+ *
+ * P3-S5: the unit-side mirror — which exams need one canonical unit today
+ * (current versions of the reader's country's ACTIVE exams, §8 vocabulary,
+ * §16 exam-page paths) — the data behind the §22 knowledge page's
+ * exam-coverage layer.
  */
 export {
   MappingError,
@@ -31,11 +36,13 @@ export {
   getPublicExamCoverage,
 } from './mapping-service'
 export { getCombinedExamView } from './combination-service'
+export { getUnitExamCoverage } from './unit-coverage-service'
 export {
   createExamMappingSchema,
   updateExamMappingSchema,
   mappingUnitSearchSchema,
   publicCoverageQuerySchema,
+  unitCoverageQuerySchema,
   combinedQueueQuerySchema,
   parseCombinedExamRefs,
   MAX_COMBINED_EXAMS,
@@ -49,6 +56,7 @@ export type {
   UpdateExamMappingInput,
   MappingUnitSearchQuery,
   PublicCoverageQuery,
+  UnitCoverageQuery,
   CombinedQueueQuery,
 } from './validation'
 export type {
@@ -68,6 +76,8 @@ export type {
   PublicExamCoverage,
   QuestionLikelihoodPublic,
   RequiredDepthPublic,
+  UnitExamCoverage,
+  UnitExamRequirement,
   UnitMappingContext,
 } from './types'
 export { REQUIRED_DEPTH_ORDER } from './types'

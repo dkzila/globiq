@@ -1,5 +1,6 @@
 /**
- * GlobIQ — Knowledge module: canonical reading-page DTOs (P2-S5)
+ * GlobIQ — Knowledge module: canonical reading-page DTOs (P2-S5; the
+ * exam-coverage layer filled in P3-S5)
  * Master Plan §22 (knowledge page: quick fact + deeper explanation + related
  * concepts + sources + exam coverage), §7 (one canonical record, many
  * representations — the page assembles, it never duplicates), §16 (canonical
@@ -12,6 +13,7 @@
 
 import type { ContentFormatPublic } from './content-types'
 import type { SourceVerificationPublic } from './source-types'
+import type { UnitExamRequirement } from '@/modules/exam-mapping'
 
 /**
  * §22 layer order — the reading flow: the quick fact first, then the deeper
@@ -106,12 +108,24 @@ export interface RelatedUnit {
   canonicalPath: string
 }
 
-/** §22 exam-coverage layer. The layer EXISTS from day one; the data arrives
- * with ExamMapping (Phase 3, §8/§11) — never fabricated before that. */
-export interface ExamCoverageLayer {
-  available: false
-  note: string
-}
+/**
+ * §22 exam-coverage layer — filled since P3-S5 from the §8 requirement layer
+ * (the unit-side mirror of the exam coverage read): which exams need this
+ * unit today, at what depth, under which syllabus topic. `available: false`
+ * is the honest empty state — no live mapping points at this unit yet —
+ * never a fabricated placeholder (the layer must never invent data before
+ * ExamMapping says so, and it never has to again).
+ */
+export type ExamCoverageLayer =
+  | { available: false; note: string }
+  | {
+      available: true
+      /** One row per (exam × syllabus node) — a unit may anchor at several
+       * nodes of one exam; every requirement stays visible. */
+      requirements: UnitExamRequirement[]
+      /** Distinct exams requiring this unit today. */
+      examCount: number
+    }
 
 /** GET /api/knowledge/page/{ref} payload — the assembled §22 knowledge page. */
 export interface KnowledgePage {

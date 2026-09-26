@@ -109,6 +109,18 @@ export const publicCoverageQuerySchema = z.object({
 
 export type PublicCoverageQuery = z.infer<typeof publicCoverageQuerySchema>
 
+// ---------- Unit mirror read (P3-S5 — the §22 knowledge-page layer) ----------
+
+/** GET unit-side coverage query — the reader's country/language context only
+ * (the mirror always answers "today", so there is no `version` parameter:
+ * historical windows stay on the coverage read's explicit path, §36). */
+export const unitCoverageQuerySchema = z.object({
+  country: z.string().trim().min(2).max(8).optional(),
+  language: z.string().trim().min(2).max(8).optional(),
+})
+
+export type UnitCoverageQuery = z.infer<typeof unitCoverageQuerySchema>
+
 // ---------- §11 combined queue (P3-S4) ----------
 
 /** §11 step 1 input cap — a learner's realistic simultaneous exam set. */

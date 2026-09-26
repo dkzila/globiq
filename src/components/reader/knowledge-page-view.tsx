@@ -1,14 +1,15 @@
 'use client'
 
 /**
- * GlobIQ — Knowledge Page View (P2-S5)
+ * GlobIQ — Knowledge Page View (P2-S5; the exam-coverage layer filled P3-S5)
  *
  * The §22 reading experience assembled from the canonical model: quick fact →
  * deeper explanation (format-aware, §23) → sources (§24) → related concepts →
- * exam coverage (P3 placeholder) — with the §35 translation surface and the
- * §16 canonical path. This is the READER surface (§38): what a student sees,
- * not an admin table. Consumes GET /api/knowledge/page/{ref} — the same
- * client-agnostic payload a future mobile app will use (§39).
+ * exam coverage (P3-S5: which exams need this unit today, at what depth) —
+ * with the §35 translation surface and the §16 canonical path. This is the
+ * READER surface (§38): what a student sees, not an admin table. Consumes
+ * GET /api/knowledge/page/{ref} — the same client-agnostic payload a future
+ * mobile app will use (§39).
  */
 import { useEffect, useState } from 'react'
 import {
@@ -87,6 +88,26 @@ interface RelatedUnit {
   canonicalPath: string
 }
 
+/** §22 layer 5 — one (exam × node) requirement row pointing at this unit. */
+interface UnitExamRequirementRow {
+  exam: { slug: string; name: string; code: string; level: string }
+  version: { label: string; effectiveFrom: string; effectiveTo: string | null; isCurrent: true }
+  node: {
+    name: string
+    depth: number
+    topic: { slug: string; canonicalName: string; label: string; labelLanguage: string } | null
+  }
+  requiredDepth: 'ONE_LINE' | 'FACT' | 'CONCEPT' | 'DETAILED' | 'ANALYTICAL'
+  priority: 'CORE' | 'SUPPORTING' | 'LOW'
+  relevance: string
+  questionLikelihood: 'HIGH' | 'MEDIUM' | 'LOW'
+  expectedScope: string | null
+  effectiveFrom: string | null
+  effectiveTo: string | null
+  /** §16 exam-page path in this page's resolved locale. */
+  examPath: string
+}
+
 export interface KnowledgePageData {
   unit: {
     slug: string
@@ -106,7 +127,9 @@ export interface KnowledgePageData {
   representations: PageRepresentation[]
   sources: PageSource[]
   related: RelatedUnit[]
-  examCoverage: { available: false; note: string }
+  examCoverage:
+    | { available: false; note: string }
+    | { available: true; requirements: UnitExamRequirementRow[]; examCount: number }
   language: { code: string; name: string; nativeName: string | null }
   translations: { code: string; name: string; nativeName: string | null; canonicalPath: string }[]
   canonicalPath: string
@@ -127,6 +150,36 @@ const FORMAT_META: Record<string, { label: string; icon: typeof FileText; tone: 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// ---------- §22 layer 5 presentation (the P3-S5 unit-side mirror) ----------
+
+const EXAM_DEPTH_STYLE: Record<string, string> = {
+  ONE_LINE: 'border-zinc-200 bg-zinc-50 text-zinc-600',
+  FACT: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  CONCEPT: 'border-teal-200 bg-teal-50 text-teal-700',
+  DETAILED: 'border-amber-200 bg-amber-50 text-amber-800',
+  ANALYTICAL: 'border-rose-200 bg-rose-50 text-rose-700',
+}
+
+const EXAM_DEPTH_LABEL: Record<string, string> = {
+  ONE_LINE: 'One line',
+  FACT: 'Fact',
+  CONCEPT: 'Concept',
+  DETAILED: 'Detailed',
+  ANALYTICAL: 'Analytical',
+}
+
+const EXAM_PRIORITY_LABEL: Record<string, string> = {
+  CORE: 'Core',
+  SUPPORTING: 'Supporting',
+  LOW: 'Low priority',
+}
+
+const EXAM_LIKELIHOOD_LABEL: Record<string, string> = {
+  HIGH: 'Often asked',
+  MEDIUM: 'Sometimes asked',
+  LOW: 'Rarely asked',
 }
 
 function verificationBadge(verification: PageSource['verification']) {
@@ -567,19 +620,103 @@ export function KnowledgePageView({
         )}
       </div>
 
-      {/* ---------- §22 layer 5: exam coverage (P3 placeholder) ---------- */}
+      {/* ---------- §22 layer 5: exam coverage (P3-S5 — the unit-side mirror) ---------- */}
       <div className="space-y-3">
-        <h4 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+        <h4 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-900">
           <GraduationCap className="h-4 w-4 text-emerald-600" aria-hidden="true" />
           Exam coverage
+          {page.examCoverage.available && (
+            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+              {page.examCoverage.examCount} exam{page.examCoverage.examCount === 1 ? '' : 's'} need
+              {page.examCoverage.examCount === 1 ? 's' : ''} this today
+            </Badge>
+          )}
         </h4>
-        <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-4">
-          <p className="flex items-center gap-2 text-sm font-medium text-zinc-700">
-            <ScrollText className="h-4 w-4 text-zinc-400" aria-hidden="true" />
-            Arrives with exam mappings (Phase 3)
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-zinc-500">{page.examCoverage.note}</p>
-        </div>
+        {page.examCoverage.available ? (
+          <ul className="space-y-2" aria-label="Exams requiring this unit">
+            {page.examCoverage.requirements.map((requirement, index) => (
+              <li
+                key={`${requirement.exam.slug}-${index}`}
+                className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <Badge className="bg-zinc-900 text-white hover:bg-zinc-900">
+                    {requirement.exam.code}
+                  </Badge>
+                  <span className="text-sm font-semibold leading-snug text-zinc-800">
+                    {requirement.exam.name}
+                  </span>
+                  <span className="text-xs text-zinc-400" title="The exam's current version (§36)">
+                    {requirement.version.label}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-600">
+                  <span className="min-w-0">{requirement.node.name}</span>
+                  {requirement.node.topic &&
+                    requirement.node.topic.label !== requirement.node.topic.canonicalName && (
+                      <Badge
+                        variant="outline"
+                        className="border-teal-200 bg-teal-50 text-[10px] font-normal text-teal-700"
+                        title={`§35 topic label (resolved in ${requirement.node.topic.labelLanguage}) — ${requirement.node.topic.canonicalName}`}
+                      >
+                        {requirement.node.topic.label}
+                      </Badge>
+                    )}
+                  <Badge
+                    variant="outline"
+                    className={`font-semibold ${EXAM_DEPTH_STYLE[requirement.requiredDepth] ?? ''}`}
+                    title="How deep this exam expects you to know this unit (§8)"
+                  >
+                    {EXAM_DEPTH_LABEL[requirement.requiredDepth] ?? requirement.requiredDepth}
+                  </Badge>
+                  <span className="text-zinc-300" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="text-zinc-500">
+                    {EXAM_PRIORITY_LABEL[requirement.priority] ?? requirement.priority}
+                  </span>
+                  <span className="text-zinc-300" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="text-zinc-500">
+                    {EXAM_LIKELIHOOD_LABEL[requirement.questionLikelihood] ??
+                      requirement.questionLikelihood}
+                  </span>
+                  {(requirement.effectiveFrom || requirement.effectiveTo) && (
+                    <span className="whitespace-nowrap font-mono text-[10px] text-zinc-400">
+                      {requirement.effectiveFrom
+                        ? `from ${requirement.effectiveFrom.slice(0, 10)}`
+                        : ''}
+                      {requirement.effectiveFrom && requirement.effectiveTo ? ' ' : ''}
+                      {requirement.effectiveTo
+                        ? `until ${requirement.effectiveTo.slice(0, 10)}`
+                        : ''}
+                    </span>
+                  )}
+                </div>
+                {requirement.expectedScope && (
+                  <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
+                    {requirement.expectedScope}
+                  </p>
+                )}
+                <code
+                  className="mt-2 inline-block break-all rounded bg-zinc-100 px-2 py-1 text-[11px] text-zinc-600 sm:break-normal"
+                  title="§16 canonical exam-page path"
+                >
+                  {requirement.examPath}
+                </code>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-4">
+            <p className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+              <ScrollText className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+              No exam requires this unit yet
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-500">{page.examCoverage.note}</p>
+          </div>
+        )}
       </div>
 
       <Separator />

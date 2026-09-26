@@ -1,15 +1,17 @@
 /**
- * GlobIQ — Exam Mapping module: public DTOs (P3-S3/P3-S4)
+ * GlobIQ — Exam Mapping module: public DTOs (P3-S3/P3-S4/P3-S5)
  * Master Plan §6 (ExamMapping row), §8 (the requirement layer: relevance,
  * priority, required_depth, expected_scope, question_likelihood, source_basis,
  * effective_period, notes), §11 (step 3: expand a version's tree into its
  * mapped canonical units; steps 4–9: the P3-S4 combined-exam union — max
  * depth, covering-exam set, canonical dedup, ranked queue), §13 (the only
  * exam→knowledge path), §14 (unit scope: GLOBAL or the exam's country),
- * §16 (knowledge-page paths shipped as data), §35 (topic labels per language
- * on coverage nodes), §36 (version-pinned mappings; superseded = history),
- * §37 (client-agnostic shapes, no internal ids beyond console needs),
- * §46.3 (a computed union, never a stored duplicate).
+ * §16 (knowledge-page and exam-page paths shipped as data), §22 (the
+ * knowledge page's exam-coverage layer — the P3-S5 unit-side mirror), §35
+ * (topic labels per language on coverage nodes), §36 (version-pinned
+ * mappings; superseded = history), §37 (client-agnostic shapes, no internal
+ * ids beyond console needs), §46.3 (a computed union, never a stored
+ * duplicate).
  */
 
 // ---------- §8 vocabulary (mirror of the Prisma enums — client-agnostic) ----------
@@ -188,6 +190,49 @@ export interface PublicExamCoverage {
   mappingCount: number
   nodes: PublicCoverageNode[]
   language: { code: string; name: string; nativeName: string | null }
+}
+
+// ---------- Unit mirror shapes (P3-S5; the §22 knowledge-page layer) ----------
+
+/**
+ * One (exam × syllabus node) requirement row in the unit-side mirror —
+ * "which exams need this unit, at what depth, under which syllabus topic".
+ * The same §8 vocabulary as every other mapping surface.
+ */
+export interface UnitExamRequirement {
+  exam: { slug: string; name: string; code: string; level: string }
+  /** The exam's CURRENT version (§36 window containing now). The mirror
+   * answers "which exams need this TODAY"; historical windows stay on the
+   * coverage read's explicit `?version=` path, not this panel. */
+  version: { label: string; effectiveFrom: string; effectiveTo: string | null; isCurrent: true }
+  node: {
+    name: string
+    depth: number
+    /** §35 topic label resolved requested → country default → canonical. */
+    topic: { slug: string; canonicalName: string; label: string; labelLanguage: string } | null
+  }
+  requiredDepth: RequiredDepthPublic
+  priority: MappingPriorityPublic
+  relevance: MappingRelevancePublic
+  questionLikelihood: QuestionLikelihoodPublic
+  expectedScope: string | null
+  effectiveFrom: string | null
+  effectiveTo: string | null
+  /** §16 exam-page path (…/exams/{exam-slug}/) in the resolved locale. */
+  examPath: string
+}
+
+/**
+ * The unit-side mirror of `getPublicExamCoverage`: every live requirement
+ * row pointing AT one canonical unit. §7/§8 — the requirement layer is many
+ * rows around one record; both directions render the same §8 fields.
+ */
+export interface UnitExamCoverage {
+  requirements: UnitExamRequirement[]
+  /** Distinct exams requiring the unit today. */
+  examCount: number
+  /** Total (exam × node) requirement rows. */
+  requirementCount: number
 }
 
 // ---------- §11 combined-exam shapes (P3-S4; consumed by P3-S5 pages) ----------

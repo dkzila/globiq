@@ -1,5 +1,6 @@
 /**
- * GlobIQ — Knowledge: canonical reading-page service (P2-S5)
+ * GlobIQ — Knowledge: canonical reading-page service (P2-S5; the §22
+ * exam-coverage layer filled in P3-S5)
  * Master Plan §22 (the knowledge page assembles: quick fact + deeper
  * explanation + related concepts + sources + exam coverage), §7 (the page is
  * an ASSEMBLY of one canonical record's representations — nothing is
@@ -9,11 +10,13 @@
  * (provenance surfaces with the reading experience), §35 (only the country's
  * configured languages; only ACTUAL published translations exposed), §37
  * (client-agnostic JSON, deterministic ordering, explicit errors), §38
- * (public surface — everyone, no auth), §43 (P2-S5 scope).
+ * (public surface — everyone, no auth), §43 (P2-S5 scope; P3-S5 fills layer
+ * 5 from the exam-mapping module's unit-side mirror).
  *
  * The service composes the existing public read paths (unit visibility from
  * P2-S1, live-revision content from P2-S2, provenance from P2-S3, scheduled
- * materialization from P2-S4) — it never bypasses their visibility chains.
+ * materialization from P2-S4, exam requirements from P3-S5) — it never
+ * bypasses their visibility chains.
  */
 import type { Prisma } from '@prisma/client'
 
@@ -25,6 +28,7 @@ import {
   LocaleError,
   resolveLocaleContext,
 } from '@/modules/country-locale'
+import { getUnitExamCoverage } from '@/modules/exam-mapping'
 import { getPublicTopic, getTopicIdentity, TaxonomyError } from '@/modules/taxonomy'
 
 import { materializeDueScheduledContent } from './content-service'
@@ -50,10 +54,12 @@ const CUID_PATTERN = /^c[a-z0-9]{20,}$/
 /** §22 related-concepts layer — sibling VERIFIED units under the same topic. */
 const RELATED_LIMIT = 6
 
-/** §22 layer 5 — the exam-coverage placeholder until ExamMapping (P3). */
-const EXAM_COVERAGE_PLACEHOLDER: ExamCoverageLayer = {
+/** §22 layer 5 empty state — no live mapping points at this unit yet (P3-S5:
+ * the layer renders the real §8 requirement rows whenever they exist; this
+ * note is the honest quiet state, never a fabricated placeholder). */
+const EXAM_COVERAGE_EMPTY: ExamCoverageLayer = {
   available: false,
-  note: 'Exam coverage arrives with exam mappings (Phase 3): every published mapping of this unit — exam, syllabus topic and required depth — will render here.',
+  note: 'No exam syllabus currently requires this unit — it appears here the moment editors map it to a live syllabus (§8).',
 }
 
 const PAGE_ITEM_INCLUDE = {
@@ -171,8 +177,10 @@ function knowledgePath(
  * Assembles the §22 knowledge page for one canonical unit in a country +
  * language context: the canonical record, the quick fact, the format-aware
  * deeper representations, the §24 sources layer, related concepts, and the
- * exam-coverage placeholder (P3). Country scope and the topic visibility
- * chain are enforced here exactly as on the P2-S1 read paths (§14/§15).
+ * §22 exam-coverage layer (P3-S5 — the unit-side mirror of the §8 requirement
+ * rows: which exams need this unit today). Country scope and the topic
+ * visibility chain are enforced here exactly as on the P2-S1 read paths
+ * (§14/§15).
  */
 export async function getKnowledgePage(
   ref: string,
@@ -414,6 +422,22 @@ export async function getKnowledgePage(
 
   const topicIdentity = await getTopicIdentity(unit.topicId)
 
+  // ---------- §22 layer 5: exam coverage (P3-S5 — the unit-side mirror) ----------
+  // Which exams need THIS unit today: current versions of the reader's
+  // country's ACTIVE exams, one row per (exam × node), §8 vocabulary + §16
+  // exam-page paths. The unit and locale are already validated above, so the
+  // mirror's own resolution cannot diverge; an empty answer is the honest
+  // quiet state, never an error.
+  const unitCoverage = await getUnitExamCoverage(ref, input)
+  const examCoverage: ExamCoverageLayer =
+    unitCoverage.requirements.length > 0
+      ? {
+          available: true,
+          requirements: unitCoverage.requirements,
+          examCount: unitCoverage.examCount,
+        }
+      : EXAM_COVERAGE_EMPTY
+
   return {
     unit: {
       slug: unit.slug,
@@ -442,7 +466,7 @@ export async function getKnowledgePage(
     representations,
     sources,
     related,
-    examCoverage: EXAM_COVERAGE_PLACEHOLDER,
+    examCoverage,
     language: {
       code: resolution.language.code,
       name: resolution.language.name,
